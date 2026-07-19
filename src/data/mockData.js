@@ -88,7 +88,7 @@ export const economicEvents = [
 export const aiBriefing = {
   sentiment: 'Neutral-Bullish',
   confidence: 72,
-  summary: 'Markets are showing cautious optimism after the Fed's dovish signals. Risk assets like crypto and equities are bid, while the dollar faces mild pressure. Key risk remains tomorrow's ISM data.',
+  summary: 'Markets are showing cautious optimism after the Fed\'s dovish signals. Risk assets like crypto and equities are bid, while the dollar faces mild pressure. Key risk remains tomorrow\'s ISM data.',
   volatility: 'Moderate',
   keyLevels: {
     'EUR/USD': { support: '1.0820', resistance: '1.0900' },
