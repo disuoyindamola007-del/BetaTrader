@@ -1,99 +1,153 @@
 import { get, set, ttlFor } from '../../lib/cache.js';
+import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
-const BINANCE_BASE = 'https://api.binance.com/api/v3';
+const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 
-export default async function handler(req, res) {
-  const { symbol, interval = '1h', limit = '200', type = 'klines' } = req.query;
+const SYMBOL_TO_ID = {
+  BTC: 'bitcoin',
+  ETH: 'ethereum',
+  SOL: 'solana',
+  XRP: 'ripple',
+  BNB: 'binancecoin',
+  ADA: 'cardano',
+  DOT: 'polkadot',
+  LINK: 'chainlink',
+  DOGE: 'dogecoin',
+  AVAX: 'avalanche-2',
+};
 
-  if (!symbol) {
-    return res.status(400).json({ error: 'Symbol required' });
+const ALL_IDS = Object.values(SYMBOL_TO_ID).join(',');
+
+function getId(symbol) {
+  return SYMBOL_TO_ID[symbol.toUpperCase().replace('/', '')];
+}
+
+async function fetchCoinGecko(url) {
+  if (isRateLimited()) {
+    const err = new Error('Rate limit cooldown active');
+    err.rateLimited = true;
+    throw err;
   }
 
-  const isBatch = symbol === 'all' || symbol.includes(',');
+  const res = await fetch(url, { headers: { accept: 'application/json' } });
+
+  if (res.status === 429) {
+    triggerRateLimitCooldown();
+    const err = new Error('CoinGecko rate limit reached');
+    err.rateLimited = true;
+    throw err;
+  }
+
+  if (!res.ok) {
+    throw new Error(`CoinGecko fetch failed: ${res.status} ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
+function normalizeStats(id, coin) {
+  const price = coin.usd;
+  const changePct = coin.usd_24h_change ?? 0;
+  const change = price * (changePct / 100);
+  const volume = coin.usd_24h_vol ?? 0;
+
+  // Approximate high/low from price ± change range (CoinGecko free tier doesn't give 24h high/low)
+  const high24h = price * (1 + Math.abs(changePct) / 100);
+  const low24h = price * (1 - Math.abs(changePct) / 100);
+
+  return {
+    price,
+    change,
+    changePct,
+    high24h,
+    low24h,
+    volume,
+    quoteVolume: volume,
+  };
+}
+
+// ==================== HANDLER ====================
+
+export default async function handler(req, res) {
+  const { symbol, interval = '1d', limit = '200', type = 'candles' } = req.query;
 
   try {
-    if (type === '24h' || isBatch) {
-      // Batch: fetch ALL Binance tickers (one call, ~2000 pairs)
-      const cacheKey = 'binance:all:ticker';
+    if (type === 'quote' || symbol === 'all' || (symbol && symbol.includes(','))) {
+      // Batch quote: fetch all tracked coins at once
+      const cacheKey = 'cg:batch:quote';
       const cached = get(cacheKey, ttlFor('batch'));
-      let allTickers;
 
+      let data;
       if (cached) {
-        allTickers = cached;
+        data = cached;
       } else {
-        const response = await fetch(`${BINANCE_BASE}/ticker/24hr`);
-        if (!response.ok) throw new Error('Binance ticker fetch failed');
-        const data = await response.json();
-        allTickers = data.filter(t => t.symbol.endsWith('USDT'));
-        set(cacheKey, allTickers);
+        const url = `${COINGECKO_BASE}/simple/price?ids=${ALL_IDS}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;
+        data = await fetchCoinGecko(url);
+        set(cacheKey, data);
       }
 
-      if (isBatch) {
-        const requested = symbol.split(',').map(s => s.toUpperCase().replace('/', '') + 'USDT');
+      // If batch request, return all mapped symbols
+      if (symbol === 'all' || (symbol && symbol.includes(','))) {
+        const requested = symbol === 'all'
+          ? Object.keys(SYMBOL_TO_ID)
+          : symbol.split(',').map(s => s.trim().toUpperCase().replace('/', ''));
+
         const result = {};
-        for (const t of allTickers) {
-          const baseSymbol = t.symbol.replace('USDT', '');
-          if (requested.includes(t.symbol)) {
-            result[baseSymbol] = {
-              price: parseFloat(t.lastPrice),
-              change: parseFloat(t.priceChange),
-              changePct: parseFloat(t.priceChangePercent),
-              high24h: parseFloat(t.highPrice),
-              low24h: parseFloat(t.lowPrice),
-              volume: parseFloat(t.volume),
-              quoteVolume: parseFloat(t.quoteVolume),
-            };
+        for (const sym of requested) {
+          const id = getId(sym);
+          if (id && data[id]) {
+            result[sym] = normalizeStats(id, data[id]);
           }
         }
+
         res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
         return res.status(200).json(result);
       }
 
-      // Single 24h
-      const binanceSymbol = symbol.toUpperCase().replace('/', '') + 'USDT';
-      const ticker = allTickers.find(t => t.symbol === binanceSymbol);
-      if (!ticker) throw new Error(`Symbol ${symbol} not found on Binance`);
+      // Single quote
+      const id = getId(symbol);
+      if (!id) return res.status(400).json({ error: `Unknown crypto symbol: ${symbol}` });
+      if (!data[id]) return res.status(404).json({ error: `No data for ${symbol}` });
 
-      return res.status(200).json({
-        price: parseFloat(ticker.lastPrice),
-        change: parseFloat(ticker.priceChange),
-        changePct: parseFloat(ticker.priceChangePercent),
-        high24h: parseFloat(ticker.highPrice),
-        low24h: parseFloat(ticker.lowPrice),
-        volume: parseFloat(ticker.volume),
-        quoteVolume: parseFloat(ticker.quoteVolume),
-      });
-    }
-
-    // Klines (candles) — individual only, with cache
-    const binanceSymbol = symbol.toUpperCase().replace('/', '') + 'USDT';
-    const intervalMap = { '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d', '1w': '1w', '1M': '1M' };
-    const binanceInterval = intervalMap[interval] || '1h';
-    const cacheKey = `binance:klines:${binanceSymbol}:${binanceInterval}:${limit}`;
-
-    const cached = get(cacheKey, ttlFor('candles', interval));
-    if (cached) {
       res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
-      return res.status(200).json(cached);
+      return res.status(200).json(normalizeStats(id, data[id]));
     }
 
-    const response = await fetch(
-      `${BINANCE_BASE}/klines?symbol=${binanceSymbol}&interval=${binanceInterval}&limit=${limit}`
-    );
-    if (!response.ok) throw new Error('Binance klines fetch failed');
-    const data = await response.json();
+    // Candles (OHLC)
+    const id = getId(symbol);
+    if (!id) return res.status(400).json({ error: `Unknown crypto symbol: ${symbol}` });
 
-    const candles = data.map(d => ({
-      time: d[0] / 1000,
-      open: parseFloat(d[1]),
-      high: parseFloat(d[2]),
-      low: parseFloat(d[3]),
-      close: parseFloat(d[4]),
-      volume: parseFloat(d[5]),
+    const days = interval === '1m' || interval === '5m' || interval === '15m' || interval === '1h'
+      ? '1'
+      : interval === '4h'
+      ? '7'
+      : interval === '1d'
+      ? '30'
+      : '365';
+
+    const cacheKey = `cg:ohlc:${id}:${days}`;
+    const cached = get(cacheKey, ttlFor('candles', interval));
+
+    let data;
+    if (cached) {
+      data = cached;
+    } else {
+      const url = `${COINGECKO_BASE}/coins/${id}/ohlc?vs_currency=usd&days=${days}`;
+      data = await fetchCoinGecko(url);
+      set(cacheKey, data);
+    }
+
+    // CoinGecko OHLC: [timestamp, open, high, low, close]
+    const candles = data.map(([time, open, high, low, close]) => ({
+      time: Math.floor(time / 1000),
+      open,
+      high,
+      low,
+      close,
+      volume: 0, // CoinGecko free OHLC doesn't include volume
     }));
 
-    set(cacheKey, candles);
-    res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
     return res.status(200).json(candles);
 
   } catch (error) {

@@ -1,5 +1,6 @@
 import { get, set, ttlFor } from '../../lib/cache.js';
 import { parseTdQuote, checkTdError } from '../../lib/twelveData.js';
+import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
@@ -34,6 +35,10 @@ export default async function handler(req, res) {
   const tdInterval = intervalMap[interval] || '1h';
 
   try {
+    if (isRateLimited()) {
+      return res.status(429).json({ error: 'Rate limit cooldown active — retry shortly', rateLimited: true, retryAfter: 60 });
+    }
+
     if (type === 'quote' || isBatch) {
       const symbolParam = mappedSymbols.join(',');
       const cacheKey = `td:quote:commodities:${symbols.sort().join(',')}`;
@@ -47,6 +52,7 @@ export default async function handler(req, res) {
           `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`
         );
         if (response.status === 429) {
+          triggerRateLimitCooldown();
           const err = new Error('TwelveData rate limit reached');
           err.rateLimited = true;
           throw err;
@@ -58,7 +64,6 @@ export default async function handler(req, res) {
       }
 
       const parsed = parseTdQuote(data, mappedSymbols);
-      // Map back to original symbols (GOLD, SILVER, etc.)
       const result = {};
       for (let i = 0; i < symbols.length; i++) {
         const mapped = mappedSymbols[i];
@@ -81,6 +86,7 @@ export default async function handler(req, res) {
         `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbolParam)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`
       );
       if (response.status === 429) {
+        triggerRateLimitCooldown();
         const err = new Error('TwelveData rate limit reached');
         err.rateLimited = true;
         throw err;

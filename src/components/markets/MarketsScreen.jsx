@@ -1,14 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { Search, ChevronRight, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw, AlertTriangle, Clock } from 'lucide-react';
 import { mockAssets } from '../../data/mockData.js';
-import { fetchBatchQuotes, fetchBinanceAllTickers, getCategory } from '../../services/api.js';
+import { fetchBatchQuotes, fetchCryptoBatchQuotes, getCategory, getCooldownSeconds } from '../../services/api.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
 const categories = ['All', 'Forex', 'Crypto', 'Metals', 'Indices', 'Commodities'];
 
-// Group symbols by category for batching
 function groupByCategory(assets) {
   const groups = { crypto: [], forex: [], commodities: [], stocks: [] };
   for (const asset of assets) {
@@ -25,6 +24,24 @@ export default function MarketsScreen() {
   const [livePrices, setLivePrices] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [rateLimitError, setRateLimitError] = useState(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  // Countdown timer for cooldown
+  useEffect(() => {
+    if (!rateLimitError) {
+      setCooldownSeconds(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      const remaining = getCooldownSeconds();
+      setCooldownSeconds(remaining);
+      if (remaining <= 0) {
+        setRateLimitError(null);
+        clearInterval(timer);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitError]);
 
   // Fetch all prices in batches
   useEffect(() => {
@@ -32,9 +49,15 @@ export default function MarketsScreen() {
       setIsLoading(true);
       setRateLimitError(null);
 
-      // 1. Crypto: single Binance call for all tickers
-      const binanceData = await fetchBinanceAllTickers();
-      const newPrices = { ...(binanceData || {}) };
+      // 1. Crypto via CoinGecko proxy
+      const cryptoData = await fetchCryptoBatchQuotes();
+      const newPrices = {};
+
+      if (cryptoData && !cryptoData.error) {
+        Object.assign(newPrices, cryptoData);
+      } else if (cryptoData?.rateLimited) {
+        setRateLimitError(cryptoData.error || 'Rate limit reached');
+      }
 
       // 2. Non-crypto: batch by category
       const nonCryptoAssets = mockAssets.filter(a => getCategory(a.symbol) !== 'crypto');
@@ -42,12 +65,10 @@ export default function MarketsScreen() {
 
       const { data: batchData, errors } = await fetchBatchQuotes(groups);
 
-      // Merge batch results
       for (const [symbol, quote] of Object.entries(batchData)) {
         newPrices[symbol] = quote;
       }
 
-      // Check for rate limit errors
       const rateLimit = errors.find(e => e.rateLimited);
       if (rateLimit) {
         setRateLimitError(rateLimit.message);
@@ -62,7 +83,6 @@ export default function MarketsScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Merge live prices with asset metadata (name, category, bias, confidence)
   const mergedAssets = useMemo(() => {
     return mockAssets.map(asset => {
       const live = livePrices[asset.symbol] || livePrices[asset.symbol.replace('/', '')];
@@ -93,11 +113,21 @@ export default function MarketsScreen() {
         {isLoading && <RefreshCw size={16} className="text-emerald-400 animate-spin" />}
       </div>
 
-      {/* Rate limit warning */}
+      {/* Rate limit warning with countdown */}
       {rateLimitError && (
         <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
           <AlertTriangle size={16} className="text-amber-400 shrink-0" />
-          <p className="text-xs text-amber-400">{rateLimitError} — try again in a minute</p>
+          <div className="flex-1">
+            <p className="text-xs text-amber-400">
+              {rateLimitError}
+              {cooldownSeconds > 0 && (
+                <span className="ml-1 inline-flex items-center gap-1">
+                  <Clock size={12} />
+                  retrying in {cooldownSeconds}s
+                </span>
+              )}
+            </p>
+          </div>
         </div>
       )}
 

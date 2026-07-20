@@ -1,6 +1,8 @@
 // Frontend API client — calls Vercel serverless proxies
 // Batching for MarketsScreen, individual for AssetDetail
 
+import { isRateLimited, getCooldownRemainingMs, triggerRateLimitCooldown } from './rateLimitState.js';
+
 const API_BASE = '';
 
 // Browser-side cache (session only — per user)
@@ -39,6 +41,15 @@ function getCandleTtl(interval) {
   return CACHE_TTL.candles_1w;
 }
 
+function makeCooldownError() {
+  const remaining = Math.ceil(getCooldownRemainingMs() / 1000);
+  const err = new Error(`Rate limit cooldown — retrying in ${remaining}s`);
+  err.rateLimited = true;
+  err.isCooldown = true;
+  err.retryAfter = remaining;
+  return err;
+}
+
 // ==================== CATEGORY DETECTION ====================
 
 export function getCategory(symbol) {
@@ -63,6 +74,12 @@ export async function fetchBatchQuotes(symbolsByCategory) {
   for (const [category, symbols] of Object.entries(symbolsByCategory)) {
     if (!symbols.length) continue;
 
+    // Check cooldown before any fetch
+    if (isRateLimited()) {
+      errors.push({ category, rateLimited: true, message: makeCooldownError().message });
+      continue;
+    }
+
     const cacheKey = getCacheKey('batch', category, symbols.sort().join(','));
     const cached = getCached(cacheKey, CACHE_TTL.batch);
     if (cached) {
@@ -77,8 +94,9 @@ export async function fetchBatchQuotes(symbolsByCategory) {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        if (errData.rateLimited) {
-          errors.push({ category, rateLimited: true, message: errData.error });
+        if (response.status === 429 || errData.rateLimited) {
+          triggerRateLimitCooldown();
+          errors.push({ category, rateLimited: true, message: errData.error || 'Rate limit reached' });
         }
         continue;
       }
@@ -88,6 +106,10 @@ export async function fetchBatchQuotes(symbolsByCategory) {
       setCache(cacheKey, data);
     } catch (err) {
       console.error(`Batch fetch error for ${category}:`, err.message);
+      if (err.rateLimited || err.message?.toLowerCase().includes('rate limit')) {
+        triggerRateLimitCooldown();
+        errors.push({ category, rateLimited: true, message: err.message });
+      }
     }
   }
 
@@ -98,6 +120,11 @@ export async function fetchBatchQuotes(symbolsByCategory) {
 
 export async function fetchQuote(symbol) {
   const category = getCategory(symbol);
+
+  if (isRateLimited()) {
+    throw makeCooldownError();
+  }
+
   const cacheKey = getCacheKey('quote', category, symbol);
   const cached = getCached(cacheKey, CACHE_TTL.quote);
   if (cached) return cached;
@@ -107,8 +134,11 @@ export async function fetchQuote(symbol) {
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
+    if (response.status === 429 || errData.rateLimited) {
+      triggerRateLimitCooldown();
+    }
     const err = new Error(errData.error || `Failed to fetch quote for ${symbol}`);
-    err.rateLimited = errData.rateLimited || false;
+    err.rateLimited = errData.rateLimited || response.status === 429;
     throw err;
   }
 
@@ -121,6 +151,11 @@ export async function fetchQuote(symbol) {
 
 export async function fetchCandles(symbol, interval = '1h', limit = 200) {
   const category = getCategory(symbol);
+
+  if (isRateLimited()) {
+    throw makeCooldownError();
+  }
+
   const cacheKey = getCacheKey('candles', category, symbol, interval, limit);
   const cached = getCached(cacheKey, getCandleTtl(interval));
   if (cached) return cached;
@@ -132,8 +167,11 @@ export async function fetchCandles(symbol, interval = '1h', limit = 200) {
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
+    if (response.status === 429 || errData.rateLimited) {
+      triggerRateLimitCooldown();
+    }
     const err = new Error(errData.error || `Failed to fetch candles for ${symbol}`);
-    err.rateLimited = errData.rateLimited || false;
+    err.rateLimited = errData.rateLimited || response.status === 429;
     throw err;
   }
 
@@ -141,6 +179,7 @@ export async function fetchCandles(symbol, interval = '1h', limit = 200) {
   if (data.error) {
     const err = new Error(data.error);
     err.rateLimited = data.rateLimited || false;
+    if (err.rateLimited) triggerRateLimitCooldown();
     throw err;
   }
 
@@ -148,38 +187,35 @@ export async function fetchCandles(symbol, interval = '1h', limit = 200) {
   return data;
 }
 
-// ==================== BINANCE ALL TICKERS (kept for crypto list) ====================
+// ==================== CRYPTO BATCH (replaces Binance direct call) ====================
 
-export async function fetchBinanceAllTickers() {
-  const cacheKey = 'binance:all';
+export async function fetchCryptoBatchQuotes() {
+  if (isRateLimited()) {
+    return { error: makeCooldownError().message, rateLimited: true };
+  }
+
+  const cacheKey = 'crypto:batch:all';
   const cached = getCached(cacheKey, CACHE_TTL.batch);
   if (cached) return cached;
 
   try {
-    const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
-    if (!response.ok) throw new Error('Binance API error');
+    const response = await fetch(`${API_BASE}/api/crypto/all?type=quote`);
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      if (response.status === 429 || errData.rateLimited) {
+        triggerRateLimitCooldown();
+      }
+      return { error: errData.error || 'Crypto fetch failed', rateLimited: errData.rateLimited || response.status === 429 };
+    }
     const data = await response.json();
-
-    const usdtPairs = data.filter(t => t.symbol.endsWith('USDT'));
-    const formatted = {};
-    usdtPairs.forEach(t => {
-      const sym = t.symbol.replace('USDT', '');
-      formatted[sym] = {
-        price: parseFloat(t.lastPrice),
-        change: parseFloat(t.priceChange),
-        changePct: parseFloat(t.priceChangePercent),
-        high24h: parseFloat(t.highPrice),
-        low24h: parseFloat(t.lowPrice),
-        volume: parseFloat(t.volume),
-        quoteVolume: parseFloat(t.quoteVolume),
-      };
-    });
-
-    setCache(cacheKey, formatted);
-    return formatted;
-  } catch (error) {
-    console.error('Binance fetch error:', error);
-    return null;
+    setCache(cacheKey, data);
+    return data;
+  } catch (err) {
+    console.error('Crypto batch fetch error:', err);
+    if (err.rateLimited || err.message?.toLowerCase().includes('rate limit')) {
+      triggerRateLimitCooldown();
+    }
+    return { error: err.message, rateLimited: true };
   }
 }
 
@@ -233,4 +269,8 @@ export function calcBollinger(data, period = 20, mult = 2) {
 
 export function isCrypto(symbol) {
   return getCategory(symbol) === 'crypto';
+}
+
+export function getCooldownSeconds() {
+  return Math.ceil(getCooldownRemainingMs() / 1000);
 }

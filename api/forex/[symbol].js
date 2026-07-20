@@ -1,5 +1,6 @@
 import { get, set, ttlFor } from '../../lib/cache.js';
 import { parseTdQuote, checkTdError } from '../../lib/twelveData.js';
+import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
@@ -22,8 +23,11 @@ export default async function handler(req, res) {
   const tdInterval = intervalMap[interval] || '1h';
 
   try {
+    if (isRateLimited()) {
+      return res.status(429).json({ error: 'Rate limit cooldown active — retry shortly', rateLimited: true, retryAfter: 60 });
+    }
+
     if (type === 'quote' || isBatch) {
-      // Batch quote: keep slashes in the symbol param for TwelveData
       const symbolParam = symbols.join(',');
       const cacheKey = `td:quote:${cleanSymbols.sort().join(',')}`;
       const cached = get(cacheKey, ttlFor('batch'));
@@ -36,6 +40,7 @@ export default async function handler(req, res) {
           `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`
         );
         if (response.status === 429) {
+          triggerRateLimitCooldown();
           const err = new Error('TwelveData rate limit reached');
           err.rateLimited = true;
           throw err;
@@ -51,8 +56,8 @@ export default async function handler(req, res) {
       return res.status(200).json(parsed);
     }
 
-    // Candles (time_series)
-    const symbolParam = symbols[0]; // Individual only for candles
+    // Candles
+    const symbolParam = symbols[0];
     const cacheKey = `td:candles:${symbolParam.replace('/', '')}:${tdInterval}:${outputsize}`;
     const cached = get(cacheKey, ttlFor('candles', interval));
 
@@ -64,6 +69,7 @@ export default async function handler(req, res) {
         `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbolParam)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`
       );
       if (response.status === 429) {
+        triggerRateLimitCooldown();
         const err = new Error('TwelveData rate limit reached');
         err.rateLimited = true;
         throw err;

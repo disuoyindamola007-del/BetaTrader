@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { ArrowLeft, Heart, Share2, Bell, Sparkles, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Bell, Sparkles, AlertTriangle, Clock } from 'lucide-react';
 import PriceChange from '../shared/PriceChange.jsx';
-import { fetchCandles, fetchQuote, calcEMA, calcRSI, calcBollinger } from '../../services/api.js';
+import { fetchCandles, fetchQuote, getCooldownSeconds } from '../../services/api.js';
+import { calcEMA, calcRSI, calcBollinger } from '../../services/api.js';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
 
@@ -16,8 +17,27 @@ export default function AssetDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [chartError, setChartError] = useState(null);
   const [rateLimited, setRateLimited] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   const symbol = selectedAsset?.symbol;
+
+  // Countdown timer for cooldown
+  useEffect(() => {
+    if (!rateLimited) {
+      setCooldownSeconds(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      const remaining = getCooldownSeconds();
+      setCooldownSeconds(remaining);
+      if (remaining <= 0) {
+        setRateLimited(false);
+        setChartError(null);
+        clearInterval(timer);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimited]);
 
   const loadData = useCallback(async () => {
     if (!symbol) return;
@@ -57,7 +77,7 @@ export default function AssetDetail() {
     } catch (err) {
       console.error('AssetDetail load error:', err);
       setChartError(err.message);
-      setRateLimited(err.rateLimited || false);
+      setRateLimited(err.rateLimited || err.isCooldown || false);
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +142,6 @@ export default function AssetDetail() {
       });
       candleSeries.setData(candles);
 
-      // Volume on its OWN pane (separate price scale, bottom 20%)
       const volSeries = chart.addSeries(HistogramSeries, {
         color: '#10b981',
         priceFormat: { type: 'volume' },
@@ -142,7 +161,6 @@ export default function AssetDetail() {
         visible: false,
       });
 
-      // EMA lines
       const ema9 = calcEMA(candles, 9);
       const ema21 = calcEMA(candles, 21);
       const ema9Series = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, title: 'EMA 9' });
@@ -259,7 +277,15 @@ export default function AssetDetail() {
                 <>
                   <AlertTriangle size={24} className="text-amber-400 mb-2" />
                   <p className="text-sm text-amber-400 mb-1 font-semibold">Rate Limit Reached</p>
-                  <p className="text-xs text-slate-400 text-center">{chartError} — try again in a minute</p>
+                  <p className="text-xs text-slate-400 text-center mb-2">
+                    {chartError}
+                    {cooldownSeconds > 0 && (
+                      <span className="ml-1 inline-flex items-center gap-1">
+                        <Clock size={12} />
+                        retrying in {cooldownSeconds}s
+                      </span>
+                    )}
+                  </p>
                 </>
               ) : (
                 <>
