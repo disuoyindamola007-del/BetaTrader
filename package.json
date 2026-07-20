@@ -20,7 +20,12 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
+    "eslint": "^10.7.0",
+    "jscpd": "^5.0.12",
+    "knip": "^6.27.0",
+    "madge": "^8.0.0",
     "postcss": "^8.4.39",
+    "source-map-explorer": "^2.5.3",
     "tailwindcss": "^3.4.6",
     "vite": "^5.3.4"
   }
