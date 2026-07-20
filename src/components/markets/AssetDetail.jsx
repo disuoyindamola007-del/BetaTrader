@@ -10,19 +10,10 @@ import {
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
 
-// Dynamically import lightweight-charts to avoid SSR/build issues
-let LightweightCharts = null;
-async function loadCharts() {
-  if (LightweightCharts) return LightweightCharts;
-  LightweightCharts = await import('lightweight-charts');
-  return LightweightCharts;
-}
-
 export default function AssetDetail() {
   const { selectedAsset, goBack, setActiveTab } = useApp();
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
-  const seriesRef = useRef({});
   const [timeframe, setTimeframe] = useState('1h');
   const [assetData, setAssetData] = useState(null);
   const [indicators, setIndicators] = useState({});
@@ -69,7 +60,7 @@ export default function AssetDetail() {
           bbLower: bb.lower[last],
         });
 
-        renderChart(klines);
+        await renderChart(klines);
       } else {
         setChartError('No candle data available');
       }
@@ -99,16 +90,20 @@ export default function AssetDetail() {
     if (!chartContainerRef.current) return;
 
     try {
-      const charts = await loadCharts();
+      // Dynamic import - MUST destructure from the module
+      const charts = await import('lightweight-charts');
+      const { createChart, CandlestickSeries, HistogramSeries, LineSeries } = charts;
 
       // Remove old chart
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
-        seriesRef.current = {};
       }
 
-      const chart = charts.createChart(chartContainerRef.current, {
+      // Clear container
+      chartContainerRef.current.innerHTML = '';
+
+      const chart = createChart(chartContainerRef.current, {
         layout: {
           background: { color: 'transparent' },
           textColor: '#94a3b8',
@@ -130,7 +125,7 @@ export default function AssetDetail() {
         height: 320,
       });
 
-      const candleSeries = chart.addCandlestickSeries({
+      const candleSeries = chart.addSeries(CandlestickSeries, {
         upColor: '#10b981',
         downColor: '#ef4444',
         borderUpColor: '#10b981',
@@ -139,10 +134,9 @@ export default function AssetDetail() {
         wickDownColor: '#ef4444',
       });
       candleSeries.setData(candles);
-      seriesRef.current.candles = candleSeries;
 
       // Volume
-      const volSeries = chart.addHistogramSeries({
+      const volSeries = chart.addSeries(HistogramSeries, {
         color: '#10b981',
         priceFormat: { type: 'volume' },
         priceScaleId: '',
@@ -155,17 +149,14 @@ export default function AssetDetail() {
           color: d.close >= d.open ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)',
         }))
       );
-      seriesRef.current.volume = volSeries;
 
       // EMA lines
       const ema9 = calcEMA(candles, 9);
       const ema21 = calcEMA(candles, 21);
-      const ema9Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, title: 'EMA 9' });
-      const ema21Series = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, title: 'EMA 21' });
+      const ema9Series = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, title: 'EMA 9' });
+      const ema21Series = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 1, title: 'EMA 21' });
       ema9Series.setData(candles.map((d, i) => ({ time: d.time, value: ema9[i] })));
       ema21Series.setData(candles.map((d, i) => ({ time: d.time, value: ema21[i] })));
-      seriesRef.current.ema9 = ema9Series;
-      seriesRef.current.ema21 = ema21Series;
 
       chart.timeScale().fitContent();
       chartRef.current = chart;
@@ -192,18 +183,26 @@ export default function AssetDetail() {
   const formatPrice = (price) => {
     if (price === null || price === undefined) return '--';
     if (price === 0) return '0.00';
+    if (price < 0.01) return price.toFixed(6);
     if (price < 1) return price.toFixed(5);
-    if (price < 1000) return price.toFixed(2);
+    if (price < 1000) return price.toFixed(4);
     return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
   };
 
   const formatVol = (n) => {
     if (n === null || n === undefined) return '--';
+    if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
     if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
     if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
     if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
     return n.toFixed(2);
   };
+
+  // Fix change percentage display
+  const changePct = assetData?.changePct;
+  const displayChangePct = changePct !== undefined && changePct !== null
+    ? (changePct > 0 ? '+' : '') + changePct.toFixed(2) + '%'
+    : '--';
 
   return (
     <div className="animate-slide-up">
@@ -300,7 +299,7 @@ export default function AssetDetail() {
           <div className="glass-card p-3">
             <p className="text-[10px] text-slate-500 uppercase">24h Change</p>
             <p className={`text-sm font-semibold font-mono ${assetData?.changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {assetData?.changePct >= 0 ? '+' : ''}{assetData?.changePct?.toFixed(2)}%
+              {displayChangePct}
             </p>
           </div>
         </div>

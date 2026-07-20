@@ -106,10 +106,34 @@ const MOCK_BASE_PRICES = {
   'SPX': 5587.20, 'NDX': 20450.80, 'DJI': 41250.30,
 };
 
+// Realistic daily volumes by asset class (in base currency units)
+const REALISTIC_VOLUMES = {
+  'EUR/USD': { min: 800e9, max: 1200e9 },      // ~$1T daily
+  'USD/JPY': { min: 600e9, max: 900e9 },
+  'GBP/USD': { min: 300e9, max: 500e9 },
+  'AUD/USD': { min: 100e9, max: 200e9 },
+  'USD/CAD': { min: 150e9, max: 250e9 },
+  'USD/CHF': { min: 100e9, max: 200e9 },
+  'GBP/JPY': { min: 80e9, max: 150e9 },
+  'EUR/JPY': { min: 100e9, max: 200e9 },
+  'GOLD': { min: 15e9, max: 30e9 },              // Gold futures
+  'SILVER': { min: 3e9, max: 8e9 },
+  'OIL': { min: 20e9, max: 40e9 },               // WTI/Brent
+  'SPX': { min: 80e9, max: 150e9 },              // S&P futures
+  'NDX': { min: 40e9, max: 80e9 },
+  'DJI': { min: 20e9, max: 40e9 },
+};
+
+function getRealisticVolume(symbol) {
+  const vol = REALISTIC_VOLUMES[symbol];
+  if (!vol) return Math.random() * 1e9;
+  return vol.min + Math.random() * (vol.max - vol.min);
+}
+
 export function generateMockCandles(symbol, count = 200, interval = '1h') {
   const base = MOCK_BASE_PRICES[symbol] || 100;
   const volatility = symbol.includes('JPY') ? 0.003 : symbol.includes('EUR') || symbol.includes('GBP') ? 0.002 : 0.008;
-  const intervalSeconds = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
+  const intervalSeconds = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400, '1w': 604800 };
   const step = intervalSeconds[interval] || 3600;
 
   const candles = [];
@@ -125,7 +149,7 @@ export function generateMockCandles(symbol, count = 200, interval = '1h') {
     candles.push({
       time: now - i * step,
       open, high, low, close,
-      volume: Math.random() * 1000000,
+      volume: getRealisticVolume(symbol) / (86400 / step) * (0.5 + Math.random()),
     });
     price = close;
   }
@@ -134,15 +158,15 @@ export function generateMockCandles(symbol, count = 200, interval = '1h') {
 
 export function generateMock24h(symbol) {
   const base = MOCK_BASE_PRICES[symbol] || 100;
-  const change = (Math.random() - 0.5) * 0.03;
+  const change = (Math.random() - 0.5) * 0.015; // More realistic daily change
   return {
     price: base * (1 + change),
     change: base * change,
     changePct: change * 100,
-    high24h: base * 1.012,
-    low24h: base * 0.988,
-    volume: Math.random() * 50000000,
-    quoteVolume: Math.random() * 50000000,
+    high24h: base * (1 + Math.abs(change) + Math.random() * 0.005),
+    low24h: base * (1 - Math.abs(change) - Math.random() * 0.005),
+    volume: getRealisticVolume(symbol),
+    quoteVolume: getRealisticVolume(symbol) * base,
   };
 }
 
@@ -195,7 +219,8 @@ export function calcBollinger(data, period = 20, mult = 2) {
 }
 
 export function isCrypto(symbol) {
-  return ['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'ADA', 'DOT', 'LINK'].includes(symbol.replace('/', ''));
+  const s = symbol.replace('/', '');
+  return ['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'ADA', 'DOT', 'LINK', 'DOGE', 'AVAX'].includes(s);
 }
 
 export function getBinanceSymbol(symbol) {
