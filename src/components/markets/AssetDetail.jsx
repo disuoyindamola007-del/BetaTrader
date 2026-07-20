@@ -15,7 +15,9 @@ export default function AssetDetail() {
 
   const symbol = selectedAsset?.symbol;
 
-  // Centralized data hooks
+  // Stale-while-revalidate: useQuote displays cached data immediately.
+  // If the cached quote is fresh (within TTL), no network request is made.
+  // If expired, the old value displays while a fresh quote is fetched in background.
   const { data: quote, error: quoteError, isLoading: quoteLoading, isStale } = useQuote(symbol, !!symbol);
   const { data: candles, error: candleError, isLoading: candleLoading } = useCandles(symbol, timeframe, { enabled: !!symbol, limit: 200 });
 

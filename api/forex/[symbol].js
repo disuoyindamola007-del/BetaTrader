@@ -52,6 +52,15 @@ export default async function handler(req, res) {
       }
 
       const parsed = parseTdQuote(data, symbols);
+
+      // ALSO store per-symbol quote cache so AssetDetail can reuse
+      for (const sym of symbols) {
+        const perSym = parsed[sym] || parsed[sym.replace('/', '')];
+        if (perSym) {
+          await set(`quote:forex:${sym}`, perSym, ttlFor('quote'));
+        }
+      }
+
       res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
       return res.status(200).json(parsed);
     }

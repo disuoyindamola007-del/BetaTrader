@@ -65,10 +65,16 @@ export default async function handler(req, res) {
 
       const parsed = parseTdQuote(data, mappedSymbols);
       const result = {};
+
+      // ALSO store per-symbol quote cache so AssetDetail can reuse
       for (let i = 0; i < symbols.length; i++) {
         const mapped = mappedSymbols[i];
-        if (parsed[mapped]) result[symbols[i]] = parsed[mapped];
+        if (parsed[mapped]) {
+          result[symbols[i]] = parsed[mapped];
+          await set(`quote:commodities:${symbols[i]}`, parsed[mapped], ttlFor('quote'));
+        }
       }
+
       res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
       return res.status(200).json(result);
     }

@@ -184,7 +184,11 @@ export default async function handler(req, res) {
               console.error(`Finnhub quote failed for ${sym}:`, err.message);
             }
           }
-          if (quote) result[sym] = quote;
+          if (quote) {
+            result[sym] = quote;
+            // Store per-symbol quote cache for AssetDetail reuse
+            await set(`quote:stocks:${sym}`, quote, ttlFor('quote'));
+          }
           else fallbackSymbols.push(sym);
         }
       } else {
@@ -197,7 +201,11 @@ export default async function handler(req, res) {
           const data = await fetchTwelveDataQuote(symbolParam, TWELVE_DATA_API_KEY);
           const parsed = parseTdQuote(data, fallbackSymbols);
           for (const sym of fallbackSymbols) {
-            if (parsed[sym] && !result[sym]) result[sym] = parsed[sym];
+            if (parsed[sym] && !result[sym]) {
+              result[sym] = parsed[sym];
+              // Store per-symbol quote cache for AssetDetail reuse
+              await set(`quote:stocks:${sym}`, parsed[sym], ttlFor('quote'));
+            }
           }
         } catch (err) {
           if (err.rateLimited) throw err;
@@ -213,7 +221,7 @@ export default async function handler(req, res) {
             const data = await fetchAlphaVantageQuote(avSym, ALPHA_VANTAGE_API_KEY);
             const q = data['Global Quote'];
             if (q) {
-              result[sym] = {
+              const quote = {
                 price: parseFloat(q['05. price']),
                 change: parseFloat(q['09. change']),
                 changePct: parseFloat(q['10. change percent']?.replace('%', '')),
@@ -222,6 +230,8 @@ export default async function handler(req, res) {
                 volume: parseFloat(q['06. volume']),
                 quoteVolume: parseFloat(q['06. volume']) * parseFloat(q['05. price']),
               };
+              result[sym] = quote;
+              await set(`quote:stocks:${sym}`, quote, ttlFor('quote'));
             }
           } catch (err) {
             console.error(`Alpha Vantage fallback quote failed for ${sym}:`, err.message);

@@ -1,163 +1,215 @@
-// useMarketData — single generic hook for all market data needs.
-//
-// Usage:
-//   const { data, error, isLoading, isStale, refresh } = useMarketData({
-//     type: 'quote',        // 'quote' | 'candles' | 'cryptoBatch'
-//     symbol: 'BTC',        // single symbol (for quote/candles)
-//     symbols: ['SPX','NDX'], // array of symbols (for batch quote)
-//     interval: '1h',       // for candles
-//     limit: 200,           // for candles
-//     enabled: true,        // can pause fetching
-//   });
-//
-// Features:
-// - Auto-refresh at category-specific intervals
-// - Pauses when browser tab is hidden
-// - Stale data fallback on error
-// - Request deduplication handled by MarketDataService
-
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   fetchQuote,
-  fetchBatchQuotes,
   fetchCandles,
+  fetchBatchQuotes,
   fetchCryptoBatch,
-  getCategory,
+  peekQuote,
   getRefreshInterval,
   isTabActive,
   onTabVisibility,
+  getCategory,
 } from '../services/marketDataService.js';
 
-function useInterval(callback, delay, enabled) {
-  const savedRef = useRef(callback);
-  useEffect(() => { savedRef.current = callback; }, [callback]);
-  useEffect(() => {
-    if (!enabled || delay === null) return;
-    const id = setInterval(() => savedRef.current(), delay);
-    return () => clearInterval(id);
-  }, [delay, enabled]);
-}
+// ==================== useQuote ====================
+// Stale-while-revalidate strategy:
+// 1. On mount: immediately display cached quote if available (instant loading)
+// 2. Check if cached quote is still within TTL (fresh)
+// 3. If fresh: no network request — data is good
+// 4. If stale/expired: display cached value immediately, fetch fresh quote
+//    in background, then update UI automatically when it arrives
+// 5. Auto-refresh on interval when tab is active
 
-export function useMarketData(options = {}) {
-  const {
-    type = 'quote',       // 'quote' | 'candles' | 'cryptoBatch' | 'batchQuotes'
-    symbol,
-    symbols,
-    interval = '1h',
-    limit = 200,
-    enabled = true,
-  } = options;
-
+export function useQuote(symbol, enabled = true) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isStale, setIsStale] = useState(false);
+  const intervalRef = useRef(null);
+  const currentSymbolRef = useRef(symbol);
 
-  // Determine refresh interval from the symbol(s) requested
-  const refreshDelay = useMemo(() => {
-    if (!enabled) return null;
-    if (type === 'cryptoBatch') return getRefreshInterval('crypto');
-    if (type === 'batchQuotes' && symbols?.length) {
-      const cats = new Set(symbols.map(getCategory));
-      let min = Infinity;
-      for (const c of cats) min = Math.min(min, getRefreshInterval(c));
-      return min === Infinity ? 60_000 : min;
+  const load = useCallback(async (isBackground = false) => {
+    if (!symbol || !enabled) return;
+
+    // Guard: capture the symbol at call time so we can reject stale responses
+    const callSymbol = symbol;
+    currentSymbolRef.current = callSymbol;
+
+    const { cached, isFresh } = peekQuote(callSymbol);
+
+    if (cached) {
+      setData(cached);
+      setIsStale(false);
     }
-    if (symbol) return getRefreshInterval(getCategory(symbol));
-    return 60_000;
-  }, [type, symbol, symbols, enabled]);
 
-  const load = useCallback(async () => {
-    if (!enabled) return;
-    if (!isTabActive()) return;
+    if (!cached || !isFresh) {
+      if (!isBackground) setIsLoading(true);
+      try {
+        const quote = await fetchQuote(callSymbol);
+        // Guard: ignore response if symbol changed while request was in flight
+        if (currentSymbolRef.current !== callSymbol) return;
+        setData(quote);
+        setError(null);
+        setIsStale(false);
+      } catch (err) {
+        // Guard: ignore error if symbol changed while request was in flight
+        if (currentSymbolRef.current !== callSymbol) return;
+        setError(err.message);
+        if (err.rateLimited || err.isCooldown) setIsStale(true);
+      } finally {
+        // Guard: only clear loading if this is still the current symbol
+        if (currentSymbolRef.current === callSymbol && !isBackground) {
+          setIsLoading(false);
+        }
+      }
+    }
+  }, [symbol, enabled]);
 
-    setIsLoading(true);
-    setError(null);
+  useEffect(() => {
+    if (!symbol || !enabled) return;
+
+    load(false);
+
+    const category = getCategory(symbol);
+    const intervalMs = getRefreshInterval(category);
+
+    intervalRef.current = setInterval(() => {
+      if (isTabActive()) load(true);
+    }, intervalMs);
+
+    return () => clearInterval(intervalRef.current);
+  }, [symbol, enabled, load]);
+
+  return { data, error, isLoading, isStale };
+}
+
+// ==================== useCandles ====================
+
+export function useCandles(symbol, interval, options = {}) {
+  const { enabled = true, limit = 200 } = options;
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const intervalRef = useRef(null);
+
+  const load = useCallback(async (isBackground = false) => {
+    if (!symbol || !enabled) return;
+    if (!isBackground) setIsLoading(true);
 
     try {
-      let result;
+      const candles = await fetchCandles(symbol, interval, limit);
+      setData(candles);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      if (!isBackground) setIsLoading(false);
+    }
+  }, [symbol, interval, limit, enabled]);
 
-      switch (type) {
-        case 'quote':
-          result = await fetchQuote(symbol);
-          setData(result);
-          setIsStale(false);
-          break;
+  useEffect(() => {
+    if (!symbol || !enabled) return;
+    load(false);
 
-        case 'batchQuotes':
-          result = await fetchBatchQuotes(symbols);
-          setData(result.data);
-          setIsStale(result.stale || false);
-          if (result.errors.length > 0 && Object.keys(result.data).length === 0) {
-            setError(result.errors.map(e => e.message).join(', '));
-          }
-          break;
+    const intervalMs = getRefreshInterval('stocks');
+    intervalRef.current = setInterval(() => {
+      if (isTabActive()) load(true);
+    }, intervalMs);
 
-        case 'candles':
-          result = await fetchCandles(symbol, interval, limit);
-          setData(result);
-          setIsStale(false);
-          break;
+    return () => clearInterval(intervalRef.current);
+  }, [symbol, interval, limit, enabled, load]);
 
-        case 'cryptoBatch':
-          result = await fetchCryptoBatch();
-          if (result.error) {
-            setError(result.error);
-            setIsStale(true);
-          } else {
-            setData(result.data);
-            setIsStale(result.stale || false);
-          }
-          break;
+  return { data, error, isLoading };
+}
 
-        default:
-          throw new Error(`Unknown type: ${type}`);
+// ==================== useBatchQuotes ====================
+
+export function useBatchQuotes(symbols, enabled = true) {
+  const [data, setData] = useState({});
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isStale, setIsStale] = useState(false);
+  const intervalRef = useRef(null);
+
+  const load = useCallback(async (isBackground = false) => {
+    if (!symbols?.length || !enabled) return;
+    if (!isBackground) setIsLoading(true);
+
+    const byCategory = {};
+    for (const sym of symbols) {
+      const cat = getCategory(sym);
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(sym);
+    }
+
+    try {
+      const { data: result, errors, stale } = await fetchBatchQuotes(byCategory);
+      setData(result);
+      setError(errors.length > 0 ? errors[0].message : null);
+      setIsStale(stale);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      if (!isBackground) setIsLoading(false);
+    }
+  }, [symbols, enabled]);
+
+  useEffect(() => {
+    if (!symbols?.length || !enabled) return;
+    load(false);
+
+    intervalRef.current = setInterval(() => {
+      if (isTabActive()) load(true);
+    }, 60_000);
+
+    return () => clearInterval(intervalRef.current);
+  }, [symbols, enabled, load]);
+
+  return { data, error, isLoading, isStale };
+}
+
+// ==================== useCryptoBatch ====================
+
+export function useCryptoBatch(enabled = true) {
+  const [data, setData] = useState({});
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isStale, setIsStale] = useState(false);
+  const intervalRef = useRef(null);
+
+  const load = useCallback(async (isBackground = false) => {
+    if (!enabled) return;
+    if (!isBackground) setIsLoading(true);
+
+    try {
+      const result = await fetchCryptoBatch();
+      if (result.error) {
+        setError(result.error);
+        setIsStale(result.stale);
+      } else {
+        setData(result.data);
+        setError(null);
+        setIsStale(result.stale);
       }
     } catch (err) {
-      console.error('[useMarketData] Load error:', err);
       setError(err.message);
-      setIsStale(err.rateLimited || err.isCooldown || false);
-      // Keep existing data (stale fallback)
     } finally {
-      setIsLoading(false);
+      if (!isBackground) setIsLoading(false);
     }
-  }, [type, symbol, symbols, interval, limit, enabled]);
+  }, [enabled]);
 
-  // Initial load
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!enabled) return;
+    load(false);
 
-  // Auto-refresh
-  useInterval(load, refreshDelay, enabled);
+    intervalRef.current = setInterval(() => {
+      if (isTabActive()) load(true);
+    }, 60_000);
 
-  // Resume when tab becomes visible
-  useEffect(() => {
-    return onTabVisibility((visible) => {
-      if (visible && enabled) load();
-    });
-  }, [load, enabled]);
+    return () => clearInterval(intervalRef.current);
+  }, [enabled, load]);
 
-  return { data, error, isLoading, isStale, refresh: load };
+  return { data, error, isLoading, isStale };
 }
 
-// Convenience: get quote for a single symbol
-export function useQuote(symbol, enabled = true) {
-  return useMarketData({ type: 'quote', symbol, enabled: !!symbol && enabled });
-}
-
-// Convenience: get candles for a single symbol
-export function useCandles(symbol, interval = '1h', options = {}) {
-  const { enabled = true, limit = 200 } = options;
-  return useMarketData({ type: 'candles', symbol, interval, limit, enabled: !!symbol && enabled });
-}
-
-// Convenience: get all crypto quotes
-export function useCryptoBatch(enabled = true) {
-  return useMarketData({ type: 'cryptoBatch', enabled });
-}
-
-// Convenience: get batch quotes for multiple symbols
-export function useBatchQuotes(symbols, enabled = true) {
-  return useMarketData({ type: 'batchQuotes', symbols, enabled: !!symbols?.length && enabled });
-}
+export { getCategory };
