@@ -9,6 +9,11 @@ export default async function handler(req, res) {
   const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
   const cleanSymbol = symbol.toUpperCase();
+  // Alpha Vantage's quote endpoint doesn't support raw index tickers (SPX, NDX, DJI) —
+  // it needs a tradeable ETF proxy instead. Twelve Data is tried first with the raw symbol;
+  // this mapping only applies to the Alpha Vantage fallback.
+  const alphaVantageIndexMap = { 'SPX': 'SPY', 'NDX': 'QQQ', 'DJI': 'DIA' };
+  const avSymbol = alphaVantageIndexMap[cleanSymbol] || cleanSymbol;
   const intervalMap = { '1m': '1min', '5m': '5min', '15m': '15min', '1h': '1h', '4h': '4h', '1d': '1day', '1w': '1week' };
   const tdInterval = intervalMap[interval] || '1day';
 
@@ -57,7 +62,7 @@ export default async function handler(req, res) {
     if (ALPHA_VANTAGE_API_KEY) {
       if (type === 'quote') {
         const response = await fetch(
-          `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${cleanSymbol}&apikey=${ALPHA_VANTAGE_API_KEY}`
+          `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${avSymbol}&apikey=${ALPHA_VANTAGE_API_KEY}`
         );
         const data = await response.json();
         const q = data['Global Quote'];
@@ -76,7 +81,7 @@ export default async function handler(req, res) {
         const avInterval = interval === '1d' ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_INTRADAY';
         const avIntervalParam = interval === '1d' ? '' : `&interval=${interval}`;
         const response = await fetch(
-          `https://www.alphavantage.co/query?function=${avInterval}${avIntervalParam}&symbol=${cleanSymbol}&apikey=${ALPHA_VANTAGE_API_KEY}&outputsize=full`
+          `https://www.alphavantage.co/query?function=${avInterval}${avIntervalParam}&symbol=${avSymbol}&apikey=${ALPHA_VANTAGE_API_KEY}&outputsize=full`
         );
         const data = await response.json();
         const timeSeries = data['Time Series (Daily)'] || data[`Time Series (${interval})`];
@@ -95,7 +100,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(503).json({ error: 'No API keys configured for stocks/indices' });
+    return res.status(502).json({ error: `No data available for symbol "${cleanSymbol}" from TwelveData or Alpha Vantage (both providers returned no usable data)` });
 
   } catch (error) {
     console.error('Stocks proxy error:', error.message);

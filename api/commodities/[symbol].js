@@ -13,9 +13,9 @@ export default async function handler(req, res) {
   const symbolMap = {
     'GOLD': 'XAU/USD',
     'SILVER': 'XAG/USD',
-    'OIL': 'WTI',
-    'CRUDE': 'WTI',
-    'BRENT': 'BRENT',
+    'OIL': 'WTI/USD',
+    'CRUDE': 'WTI/USD',
+    'BRENT': 'BRENT/USD',
   };
 
   const cleanSymbol = symbolMap[symbol.toUpperCase()] || symbol.toUpperCase();
@@ -27,8 +27,11 @@ export default async function handler(req, res) {
       const response = await fetch(
         `https://api.twelvedata.com/quote?symbol=${cleanSymbol}&apikey=${TWELVE_DATA_API_KEY}`
       );
-      if (!response.ok) throw new Error('TwelveData quote fetch failed');
       const data = await response.json();
+
+      if (!response.ok || data.status === 'error' || data.code) {
+        throw new Error(data.message || `TwelveData quote fetch failed (HTTP ${response.status})`);
+      }
 
       return res.status(200).json({
         price: parseFloat(data.close || data.price),
