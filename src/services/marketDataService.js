@@ -71,6 +71,7 @@ const COMMODITY_SET = new Set(['GOLD','SILVER','OIL','CRUDE','BRENT']);
 const INDEX_SET = new Set(['SPX','NDX','DJI']);
 
 export function getCategory(symbol) {
+  if (!symbol) return 'stocks';
   const s = symbol.toUpperCase().replace('/', '');
   if (CRYPTO_SET.has(s)) return 'crypto';
   if (FOREX_SET.has(s)) return 'forex';

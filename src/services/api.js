@@ -53,6 +53,7 @@ function makeCooldownError() {
 // ==================== CATEGORY DETECTION ====================
 
 export function getCategory(symbol) {
+  if (!symbol) return 'stocks';
   const s = symbol.toUpperCase().replace('/', '');
   if (['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'ADA', 'DOT', 'LINK', 'DOGE', 'AVAX'].includes(s)) return 'crypto';
   if (['EURUSD', 'USDJPY', 'GBPUSD', 'AUDUSD', 'USDCAD', 'USDCHF', 'GBPJPY', 'EURJPY'].includes(s)) return 'forex';
