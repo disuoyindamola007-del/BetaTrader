@@ -15,6 +15,11 @@ export default async function handler(req, res) {
 
   const isBatch = symbol.includes(',');
   const symbols = symbol.split(',').map(s => s.trim().toUpperCase());
+  // Alpha Vantage's quote endpoint doesn't support raw index tickers (SPX, NDX, DJI) —
+  // it needs a tradeable ETF proxy instead. TwelveData is tried first with the raw symbol;
+  // this mapping only applies to the Alpha Vantage fallback.
+  const alphaVantageIndexMap = { 'SPX': 'SPY', 'NDX': 'QQQ', 'DJI': 'DIA' };
+  const avSymbols = symbols.map(s => alphaVantageIndexMap[s] || s);
   const intervalMap = { '1m': '1min', '5m': '5min', '15m': '15min', '1h': '1h', '4h': '4h', '1d': '1day', '1w': '1week' };
   const tdInterval = intervalMap[interval] || '1day';
 
@@ -62,7 +67,7 @@ export default async function handler(req, res) {
           data = cached;
         } else {
           const response = await fetch(
-            `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbols[0]}&apikey=${ALPHA_VANTAGE_API_KEY}`
+            `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${avSymbols[0]}&apikey=${ALPHA_VANTAGE_API_KEY}`
           );
           if (!response.ok) throw new Error(`Alpha Vantage quote failed: ${response.status}`);
           data = await response.json();
@@ -127,7 +132,7 @@ export default async function handler(req, res) {
 
     // Alpha Vantage fallback for candles
     if (ALPHA_VANTAGE_API_KEY) {
-      const symbolParam = symbols[0];
+      const symbolParam = avSymbols[0];
       const avInterval = interval === '1d' ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_INTRADAY';
       const avIntervalParam = interval === '1d' ? '' : `&interval=${interval}`;
       const cacheKey = `av:candles:${symbolParam}:${interval}`;
