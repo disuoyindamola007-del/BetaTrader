@@ -9,16 +9,9 @@ import {
   mockAssets, marketPulse, watchlist, trending,
   newsItems, economicEvents, aiBriefing
 } from '../../data/mockData.js';
-import { fetchBinanceAllTickers, fetchBinanceKlines } from '../../services/api.js';
+import { fetchBinanceAllTickers, fetchCandles } from '../../services/api.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
-
-let LightweightCharts = null;
-async function loadCharts() {
-  if (LightweightCharts) return LightweightCharts;
-  LightweightCharts = await import('lightweight-charts');
-  return LightweightCharts;
-}
 
 export default function HomeScreen() {
   const { navigateToAsset, setActiveTab, userName } = useApp();
@@ -71,20 +64,23 @@ export default function HomeScreen() {
     setChartError(null);
 
     try {
-      const candles = await fetchBinanceKlines('BTC', '1h', 100);
+      const candles = await fetchCandles('BTC', '1h', 100);
       if (!candles || candles.length === 0) {
         setChartError('No chart data');
         return;
       }
 
-      const charts = await loadCharts();
+      const charts = await import('lightweight-charts');
+      const { createChart, CandlestickSeries } = charts;
 
       if (homeChartInstance.current) {
         homeChartInstance.current.remove();
         homeChartInstance.current = null;
       }
 
-      const chart = charts.createChart(homeChartRef.current, {
+      homeChartRef.current.innerHTML = '';
+
+      const chart = createChart(homeChartRef.current, {
         layout: {
           background: { color: 'transparent' },
           textColor: '#94a3b8',
@@ -102,7 +98,7 @@ export default function HomeScreen() {
         handleScale: false,
       });
 
-      const candleSeries = chart.addCandlestickSeries({
+      const candleSeries = chart.addSeries(CandlestickSeries, {
         upColor: '#10b981', downColor: '#ef4444',
         borderUpColor: '#10b981', borderDownColor: '#ef4444',
         wickUpColor: '#10b981', wickDownColor: '#ef4444',

@@ -2,11 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../AppContext.jsx';
 import { ArrowLeft, Heart, Share2, Bell, Sparkles } from 'lucide-react';
 import PriceChange from '../shared/PriceChange.jsx';
-import {
-  fetchBinanceKlines, fetchBinance24h,
-  generateMockCandles, generateMock24h,
-  calcEMA, calcRSI, calcBollinger, isCrypto,
-} from '../../services/api.js';
+import { fetchCandles, fetchQuote, calcEMA, calcRSI, calcBollinger } from '../../services/api.js';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
 
@@ -21,7 +17,6 @@ export default function AssetDetail() {
   const [chartError, setChartError] = useState(null);
 
   const symbol = selectedAsset?.symbol;
-  const crypto = symbol ? isCrypto(symbol) : false;
 
   const loadData = useCallback(async () => {
     if (!symbol) return;
@@ -29,27 +24,20 @@ export default function AssetDetail() {
     setChartError(null);
 
     try {
-      let data24h, klines;
+      const [quote, candles] = await Promise.all([
+        fetchQuote(symbol),
+        fetchCandles(symbol, timeframe, 200),
+      ]);
 
-      if (crypto) {
-        [data24h, klines] = await Promise.all([
-          fetchBinance24h(symbol),
-          fetchBinanceKlines(symbol, timeframe, 200),
-        ]);
-      } else {
-        data24h = generateMock24h(symbol);
-        klines = generateMockCandles(symbol, 200, timeframe);
-      }
+      setAssetData(quote);
 
-      setAssetData(data24h);
-
-      if (klines && klines.length > 0) {
-        const ema9 = calcEMA(klines, 9);
-        const ema21 = calcEMA(klines, 21);
-        const ema50 = calcEMA(klines, 50);
-        const rsi = calcRSI(klines);
-        const bb = calcBollinger(klines);
-        const last = klines.length - 1;
+      if (candles && candles.length > 0) {
+        const ema9 = calcEMA(candles, 9);
+        const ema21 = calcEMA(candles, 21);
+        const ema50 = calcEMA(candles, 50);
+        const rsi = calcRSI(candles);
+        const bb = calcBollinger(candles);
+        const last = candles.length - 1;
 
         setIndicators({
           rsi: rsi[rsi.length - 1].toFixed(1),
@@ -60,7 +48,7 @@ export default function AssetDetail() {
           bbLower: bb.lower[last],
         });
 
-        await renderChart(klines);
+        await renderChart(candles);
       } else {
         setChartError('No candle data available');
       }
@@ -70,13 +58,12 @@ export default function AssetDetail() {
     } finally {
       setIsLoading(false);
     }
-  }, [symbol, crypto, timeframe]);
+  }, [symbol, timeframe]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Cleanup chart on unmount
   useEffect(() => {
     return () => {
       if (chartRef.current) {
@@ -90,17 +77,14 @@ export default function AssetDetail() {
     if (!chartContainerRef.current) return;
 
     try {
-      // Dynamic import - MUST destructure from the module
       const charts = await import('lightweight-charts');
       const { createChart, CandlestickSeries, HistogramSeries, LineSeries } = charts;
 
-      // Remove old chart
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
       }
 
-      // Clear container
       chartContainerRef.current.innerHTML = '';
 
       const chart = createChart(chartContainerRef.current, {
@@ -116,15 +100,16 @@ export default function AssetDetail() {
         crosshair: { mode: 1 },
         rightPriceScale: {
           borderColor: 'rgba(51, 65, 85, 0.5)',
-          scaleMargins: { top: 0.1, bottom: 0.25 },
+          scaleMargins: { top: 0.05, bottom: 0.25 },
         },
         timeScale: {
           borderColor: 'rgba(51, 65, 85, 0.5)',
           timeVisible: true,
         },
-        height: 320,
+        height: 360,
       });
 
+      // Candlestick series on main price scale
       const candleSeries = chart.addSeries(CandlestickSeries, {
         upColor: '#10b981',
         downColor: '#ef4444',
@@ -135,12 +120,11 @@ export default function AssetDetail() {
       });
       candleSeries.setData(candles);
 
-      // Volume
+      // Volume on its OWN pane (separate price scale, bottom 20% of chart)
       const volSeries = chart.addSeries(HistogramSeries, {
         color: '#10b981',
         priceFormat: { type: 'volume' },
-        priceScaleId: '',
-        scaleMargins: { top: 0.85, bottom: 0 },
+        priceScaleId: 'volume',
       });
       volSeries.setData(
         candles.map(d => ({
@@ -150,7 +134,14 @@ export default function AssetDetail() {
         }))
       );
 
-      // EMA lines
+      // Configure volume pane to take bottom 20%
+      chart.priceScale('volume').applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+        borderVisible: false,
+        visible: false,
+      });
+
+      // EMA lines on main price scale
       const ema9 = calcEMA(candles, 9);
       const ema21 = calcEMA(candles, 21);
       const ema9Series = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, title: 'EMA 9' });
@@ -161,12 +152,11 @@ export default function AssetDetail() {
       chart.timeScale().fitContent();
       chartRef.current = chart;
 
-      // Handle resize
       const resizeObserver = new ResizeObserver(() => {
         if (chartRef.current && chartContainerRef.current) {
           chartRef.current.applyOptions({
             width: chartContainerRef.current.clientWidth,
-            height: 320,
+            height: 360,
           });
         }
       });
@@ -197,12 +187,6 @@ export default function AssetDetail() {
     if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
     return n.toFixed(2);
   };
-
-  // Fix change percentage display
-  const changePct = assetData?.changePct;
-  const displayChangePct = changePct !== undefined && changePct !== null
-    ? (changePct > 0 ? '+' : '') + changePct.toFixed(2) + '%'
-    : '--';
 
   return (
     <div className="animate-slide-up">
@@ -257,10 +241,10 @@ export default function AssetDetail() {
         </div>
 
         {/* Chart */}
-        <div className="glass-card p-2 mb-5 relative" style={{ minHeight: '320px' }}>
+        <div className="glass-card p-2 mb-5 relative" style={{ minHeight: '360px' }}>
           <div
             ref={chartContainerRef}
-            style={{ width: '100%', height: '320px', position: 'relative' }}
+            style={{ width: '100%', height: '360px', position: 'relative' }}
           />
           {isLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg z-10">
@@ -299,7 +283,7 @@ export default function AssetDetail() {
           <div className="glass-card p-3">
             <p className="text-[10px] text-slate-500 uppercase">24h Change</p>
             <p className={`text-sm font-semibold font-mono ${assetData?.changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {displayChangePct}
+              {assetData?.changePct >= 0 ? '+' : ''}{assetData?.changePct?.toFixed(2)}%
             </p>
           </div>
         </div>
