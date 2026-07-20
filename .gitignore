@@ -3,3 +3,6 @@ node_modules/
 .env.local
 .git-credentials
 _backup-before-kimi-merge/
+market-data-fix/
+apply-fix.sh
+market-data-fix.zip
