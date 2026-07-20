@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { ArrowLeft, Heart, Share2, Bell, Sparkles } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Bell, Sparkles, AlertTriangle } from 'lucide-react';
 import PriceChange from '../shared/PriceChange.jsx';
 import { fetchCandles, fetchQuote, calcEMA, calcRSI, calcBollinger } from '../../services/api.js';
 
@@ -15,6 +15,7 @@ export default function AssetDetail() {
   const [indicators, setIndicators] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [chartError, setChartError] = useState(null);
+  const [rateLimited, setRateLimited] = useState(false);
 
   const symbol = selectedAsset?.symbol;
 
@@ -22,6 +23,7 @@ export default function AssetDetail() {
     if (!symbol) return;
     setIsLoading(true);
     setChartError(null);
+    setRateLimited(false);
 
     try {
       const [quote, candles] = await Promise.all([
@@ -55,6 +57,7 @@ export default function AssetDetail() {
     } catch (err) {
       console.error('AssetDetail load error:', err);
       setChartError(err.message);
+      setRateLimited(err.rateLimited || false);
     } finally {
       setIsLoading(false);
     }
@@ -109,7 +112,6 @@ export default function AssetDetail() {
         height: 360,
       });
 
-      // Candlestick series on main price scale
       const candleSeries = chart.addSeries(CandlestickSeries, {
         upColor: '#10b981',
         downColor: '#ef4444',
@@ -120,7 +122,7 @@ export default function AssetDetail() {
       });
       candleSeries.setData(candles);
 
-      // Volume on its OWN pane (separate price scale, bottom 20% of chart)
+      // Volume on its OWN pane (separate price scale, bottom 20%)
       const volSeries = chart.addSeries(HistogramSeries, {
         color: '#10b981',
         priceFormat: { type: 'volume' },
@@ -134,14 +136,13 @@ export default function AssetDetail() {
         }))
       );
 
-      // Configure volume pane to take bottom 20%
       chart.priceScale('volume').applyOptions({
         scaleMargins: { top: 0.8, bottom: 0 },
         borderVisible: false,
         visible: false,
       });
 
-      // EMA lines on main price scale
+      // EMA lines
       const ema9 = calcEMA(candles, 9);
       const ema21 = calcEMA(candles, 21);
       const ema9Series = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, title: 'EMA 9' });
@@ -253,9 +254,19 @@ export default function AssetDetail() {
             </div>
           )}
           {chartError && !isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg z-10">
-              <p className="text-sm text-red-400 mb-1">Chart Error</p>
-              <p className="text-xs text-slate-500">{chartError}</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg z-10 px-6">
+              {rateLimited ? (
+                <>
+                  <AlertTriangle size={24} className="text-amber-400 mb-2" />
+                  <p className="text-sm text-amber-400 mb-1 font-semibold">Rate Limit Reached</p>
+                  <p className="text-xs text-slate-400 text-center">{chartError} — try again in a minute</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-red-400 mb-1">Chart Error</p>
+                  <p className="text-xs text-slate-500 text-center">{chartError}</p>
+                </>
+              )}
               <button
                 onClick={loadData}
                 className="mt-3 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-lg border border-emerald-500/30"

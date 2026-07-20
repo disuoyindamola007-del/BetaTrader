@@ -1,3 +1,20 @@
+import { get, set, ttlFor } from '../../lib/cache.js';
+import { parseTdQuote, checkTdError } from '../../lib/twelveData.js';
+
+const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
+
+const SYMBOL_MAP = {
+  'GOLD': 'XAU/USD',
+  'SILVER': 'XAG/USD',
+  'OIL': 'WTI/USD',
+  'CRUDE': 'WTI/USD',
+  'BRENT': 'BRENT/USD',
+};
+
+function mapSymbol(sym) {
+  return SYMBOL_MAP[sym.toUpperCase()] || sym.toUpperCase();
+}
+
 export default async function handler(req, res) {
   const { symbol, interval = '1h', outputsize = '200', type = 'candles' } = req.query;
 
@@ -10,48 +27,68 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'TWELVE_DATA_API_KEY not configured' });
   }
 
-  const symbolMap = {
-    'GOLD': 'XAU/USD',
-    'SILVER': 'XAG/USD',
-    'OIL': 'WTI/USD',
-    'CRUDE': 'WTI/USD',
-    'BRENT': 'BRENT/USD',
-  };
-
-  const cleanSymbol = symbolMap[symbol.toUpperCase()] || symbol.toUpperCase();
+  const isBatch = symbol.includes(',');
+  const symbols = symbol.split(',').map(s => s.trim().toUpperCase());
+  const mappedSymbols = symbols.map(mapSymbol);
   const intervalMap = { '1m': '1min', '5m': '5min', '15m': '15min', '1h': '1h', '4h': '4h', '1d': '1day', '1w': '1week' };
   const tdInterval = intervalMap[interval] || '1h';
 
   try {
-    if (type === 'quote') {
-      const response = await fetch(
-        `https://api.twelvedata.com/quote?symbol=${cleanSymbol}&apikey=${TWELVE_DATA_API_KEY}`
-      );
-      const data = await response.json();
+    if (type === 'quote' || isBatch) {
+      const symbolParam = mappedSymbols.join(',');
+      const cacheKey = `td:quote:commodities:${symbols.sort().join(',')}`;
+      const cached = get(cacheKey, ttlFor('batch'));
 
-      if (!response.ok || data.status === 'error' || data.code) {
-        throw new Error(data.message || `TwelveData quote fetch failed (HTTP ${response.status})`);
+      let data;
+      if (cached) {
+        data = cached;
+      } else {
+        const response = await fetch(
+          `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`
+        );
+        if (response.status === 429) {
+          const err = new Error('TwelveData rate limit reached');
+          err.rateLimited = true;
+          throw err;
+        }
+        if (!response.ok) throw new Error(`TwelveData quote fetch failed: ${response.status}`);
+        data = await response.json();
+        checkTdError(data);
+        set(cacheKey, data);
       }
 
-      return res.status(200).json({
-        price: parseFloat(data.close || data.price),
-        change: parseFloat(data.change),
-        changePct: parseFloat(data.percent_change),
-        high24h: parseFloat(data.high),
-        low24h: parseFloat(data.low),
-        volume: parseFloat(data.volume),
-        quoteVolume: parseFloat(data.volume) * parseFloat(data.close),
-      });
+      const parsed = parseTdQuote(data, mappedSymbols);
+      // Map back to original symbols (GOLD, SILVER, etc.)
+      const result = {};
+      for (let i = 0; i < symbols.length; i++) {
+        const mapped = mappedSymbols[i];
+        if (parsed[mapped]) result[symbols[i]] = parsed[mapped];
+      }
+      res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+      return res.status(200).json(result);
     }
 
-    const response = await fetch(
-      `https://api.twelvedata.com/time_series?symbol=${cleanSymbol}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`
-    );
-    if (!response.ok) throw new Error('TwelveData candles fetch failed');
-    const data = await response.json();
+    // Candles
+    const symbolParam = mappedSymbols[0];
+    const cacheKey = `td:candles:commodities:${symbolParam.replace('/', '')}:${tdInterval}:${outputsize}`;
+    const cached = get(cacheKey, ttlFor('candles', interval));
 
-    if (data.status === 'error') {
-      throw new Error(data.message || 'TwelveData API error');
+    let data;
+    if (cached) {
+      data = cached;
+    } else {
+      const response = await fetch(
+        `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbolParam)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`
+      );
+      if (response.status === 429) {
+        const err = new Error('TwelveData rate limit reached');
+        err.rateLimited = true;
+        throw err;
+      }
+      if (!response.ok) throw new Error(`TwelveData candles fetch failed: ${response.status}`);
+      data = await response.json();
+      checkTdError(data);
+      set(cacheKey, data);
     }
 
     const candles = (data.values || []).reverse().map(d => ({
@@ -68,6 +105,10 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Commodities proxy error:', error.message);
-    return res.status(500).json({ error: error.message });
+    const status = error.rateLimited ? 429 : 500;
+    return res.status(status).json({
+      error: error.message,
+      rateLimited: error.rateLimited || false,
+    });
   }
 }

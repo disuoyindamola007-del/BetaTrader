@@ -1,12 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { Search, ChevronRight, RefreshCw } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw, AlertTriangle } from 'lucide-react';
 import { mockAssets } from '../../data/mockData.js';
-import { fetchBinanceAllTickers, isCrypto } from '../../services/api.js';
+import { fetchBatchQuotes, fetchBinanceAllTickers, getCategory } from '../../services/api.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
 const categories = ['All', 'Forex', 'Crypto', 'Metals', 'Indices', 'Commodities'];
+
+// Group symbols by category for batching
+function groupByCategory(assets) {
+  const groups = { crypto: [], forex: [], commodities: [], stocks: [] };
+  for (const asset of assets) {
+    const cat = getCategory(asset.symbol);
+    if (groups[cat]) groups[cat].push(asset.symbol);
+  }
+  return groups;
+}
 
 export default function MarketsScreen() {
   const { navigateToAsset } = useApp();
@@ -14,28 +24,59 @@ export default function MarketsScreen() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [livePrices, setLivePrices] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const [rateLimitError, setRateLimitError] = useState(null);
 
+  // Fetch all prices in batches
   useEffect(() => {
     async function loadPrices() {
       setIsLoading(true);
+      setRateLimitError(null);
+
+      // 1. Crypto: single Binance call for all tickers
       const binanceData = await fetchBinanceAllTickers();
-      if (binanceData) setLivePrices(binanceData);
+      const newPrices = { ...(binanceData || {}) };
+
+      // 2. Non-crypto: batch by category
+      const nonCryptoAssets = mockAssets.filter(a => getCategory(a.symbol) !== 'crypto');
+      const groups = groupByCategory(nonCryptoAssets);
+
+      const { data: batchData, errors } = await fetchBatchQuotes(groups);
+
+      // Merge batch results
+      for (const [symbol, quote] of Object.entries(batchData)) {
+        newPrices[symbol] = quote;
+      }
+
+      // Check for rate limit errors
+      const rateLimit = errors.find(e => e.rateLimited);
+      if (rateLimit) {
+        setRateLimitError(rateLimit.message);
+      }
+
+      setLivePrices(newPrices);
       setIsLoading(false);
     }
+
     loadPrices();
     const interval = setInterval(loadPrices, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Merge live prices with mock data
-  const mergedAssets = mockAssets.map(asset => {
-    const cleanSymbol = asset.symbol.replace('/', '');
-    const live = livePrices[cleanSymbol];
-    if (live) {
-      return { ...asset, price: live.price, change: live.change, changePct: live.changePct };
-    }
-    return asset;
-  });
+  // Merge live prices with asset metadata (name, category, bias, confidence)
+  const mergedAssets = useMemo(() => {
+    return mockAssets.map(asset => {
+      const live = livePrices[asset.symbol] || livePrices[asset.symbol.replace('/', '')];
+      if (live && live.price) {
+        return {
+          ...asset,
+          price: live.price,
+          change: live.change,
+          changePct: live.changePct,
+        };
+      }
+      return asset;
+    });
+  }, [livePrices]);
 
   const filteredAssets = mergedAssets.filter(asset => {
     const matchesSearch = asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -51,6 +92,14 @@ export default function MarketsScreen() {
         <h1 className="text-xl font-extrabold">Markets</h1>
         {isLoading && <RefreshCw size={16} className="text-emerald-400 animate-spin" />}
       </div>
+
+      {/* Rate limit warning */}
+      {rateLimitError && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
+          <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+          <p className="text-xs text-amber-400">{rateLimitError} — try again in a minute</p>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-4">
@@ -81,7 +130,7 @@ export default function MarketsScreen() {
         ))}
       </div>
 
-      {/* Asset Grid - RESPONSIVE FIX: 1 col mobile, 2 col tablet, 3 col desktop */}
+      {/* Asset Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {filteredAssets.map((asset) => (
           <button
