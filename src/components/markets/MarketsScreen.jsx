@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../../AppContext.jsx';
 import { Search, ChevronRight, RefreshCw } from 'lucide-react';
 import { mockAssets } from '../../data/mockData.js';
-import { fetchBinanceAllTickers } from '../../services/api.js';
+import { fetchBinanceAllTickers, isCrypto } from '../../services/api.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
@@ -32,12 +32,7 @@ export default function MarketsScreen() {
     const cleanSymbol = asset.symbol.replace('/', '');
     const live = livePrices[cleanSymbol];
     if (live) {
-      return {
-        ...asset,
-        price: live.price,
-        change: live.change,
-        changePct: live.changePct,
-      };
+      return { ...asset, price: live.price, change: live.change, changePct: live.changePct };
     }
     return asset;
   });
@@ -45,7 +40,7 @@ export default function MarketsScreen() {
   const filteredAssets = mergedAssets.filter(asset => {
     const matchesSearch = asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          asset.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = activeCategory === 'All' || 
+    const matchesCategory = activeCategory === 'All' ||
                            asset.category.toLowerCase() === activeCategory.toLowerCase();
     return matchesSearch && matchesCategory;
   });
@@ -76,8 +71,8 @@ export default function MarketsScreen() {
             key={cat}
             onClick={() => setActiveCategory(cat)}
             className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-              activeCategory === cat 
-                ? 'bg-emerald-500 text-slate-950' 
+              activeCategory === cat
+                ? 'bg-emerald-500 text-slate-950'
                 : 'bg-slate-800/60 text-slate-400 border border-slate-700/30 hover:text-slate-200'
             }`}
           >
@@ -86,8 +81,8 @@ export default function MarketsScreen() {
         ))}
       </div>
 
-      {/* Asset Grid */}
-      <div className="grid grid-cols-2 gap-2.5">
+      {/* Asset Grid - RESPONSIVE FIX: 1 col mobile, 2 col tablet, 3 col desktop */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {filteredAssets.map((asset) => (
           <button
             key={asset.symbol}
@@ -102,9 +97,9 @@ export default function MarketsScreen() {
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-sm font-bold font-mono">
-                  {asset.category === 'crypto' 
-                    ? `$${asset.price?.toLocaleString()}` 
-                    : asset.price?.toFixed(4)}
+                  {asset.category === 'crypto' && asset.price > 1000
+                    ? `$${asset.price?.toLocaleString()}`
+                    : asset.price?.toFixed(asset.price < 1 ? 5 : 4)}
                 </p>
                 <PriceChange value={asset.change} pct={asset.changePct} />
               </div>

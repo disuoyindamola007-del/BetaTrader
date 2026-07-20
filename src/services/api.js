@@ -1,8 +1,3 @@
-// API Keys from environment variables (Vite exposes VITE_ prefixed vars)
-const TWELVE_DATA_API_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY || '';
-const ALPHA_VANTAGE_API_KEY = import.meta.env.VITE_ALPHAVANTAGE_API_KEY || '';
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
-
 const BINANCE_BASE = 'https://api.binance.com/api/v3';
 
 // ==================== BINANCE (FREE - NO KEY NEEDED) ====================
@@ -50,70 +45,159 @@ export async function fetchBinancePrices(symbols) {
   return results;
 }
 
-// ==================== TWELVEDATA (NEEDS API KEY) ====================
+// ==================== BINANCE KLINES (HISTORICAL CANDLES) ====================
 
-export async function fetchTwelveDataBatch(symbols) {
-  if (!TWELVE_DATA_API_KEY) return null;
+const INTERVAL_MAP = {
+  '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1h',
+  '4h': '4h', '1d': '1d', '1w': '1w', '1M': '1M',
+};
+
+export async function fetchBinanceKlines(symbol, interval = '1h', limit = 200) {
   try {
-    const symbolString = symbols.join(',');
+    const binanceSymbol = symbol.replace('/', '') + 'USDT';
+    const binanceInterval = INTERVAL_MAP[interval] || '1h';
     const response = await fetch(
-      `https://api.twelvedata.com/price?symbol=${symbolString}&apikey=${TWELVE_DATA_API_KEY}`
+      `${BINANCE_BASE}/klines?symbol=${binanceSymbol}&interval=${binanceInterval}&limit=${limit}`
     );
-    return await response.json();
-  } catch (error) {
-    console.error('TwelveData batch error:', error);
-    return null;
-  }
-}
-
-// ==================== ALPHA VANTAGE (NEEDS API KEY) ====================
-
-export async function fetchAlphaVantageData(symbol, function_type = 'TIME_SERIES_DAILY') {
-  if (!ALPHA_VANTAGE_API_KEY) return null;
-  try {
-    const response = await fetch(
-      `https://www.alphavantage.co/query?function=${function_type}&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`
-    );
-    return await response.json();
-  } catch (error) {
-    console.error('AlphaVantage error:', error);
-    return null;
-  }
-}
-
-// ==================== GROQ AI (NEEDS API KEY) ====================
-
-export async function fetchGroqAnalysis(prompt) {
-  if (!GROQ_API_KEY) return null;
-  try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama3-8b-8192',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        max_tokens: 500,
-      }),
-    });
+    if (!response.ok) throw new Error('Klines fetch failed');
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || null;
+
+    return data.map(d => ({
+      time: d[0] / 1000,
+      open: parseFloat(d[1]),
+      high: parseFloat(d[2]),
+      low: parseFloat(d[3]),
+      close: parseFloat(d[4]),
+      volume: parseFloat(d[5]),
+    }));
   } catch (error) {
-    console.error('Groq error:', error);
+    console.error('Klines fetch error:', error);
+    return [];
+  }
+}
+
+export async function fetchBinance24h(symbol) {
+  try {
+    const binanceSymbol = symbol.replace('/', '') + 'USDT';
+    const response = await fetch(`${BINANCE_BASE}/ticker/24hr?symbol=${binanceSymbol}`);
+    if (!response.ok) throw new Error('24h fetch failed');
+    const data = await response.json();
+    return {
+      price: parseFloat(data.lastPrice),
+      change: parseFloat(data.priceChange),
+      changePct: parseFloat(data.priceChangePercent),
+      high24h: parseFloat(data.highPrice),
+      low24h: parseFloat(data.lowPrice),
+      volume: parseFloat(data.volume),
+      quoteVolume: parseFloat(data.quoteVolume),
+    };
+  } catch (error) {
+    console.error('24h fetch error:', error);
     return null;
   }
 }
 
-// ==================== COMBINED DATA FETCHER ====================
+// ==================== MOCK DATA GENERATOR (NON-CRYPTO) ====================
 
-export async function fetchAllMarketData() {
-  const cryptoData = await fetchBinanceAllTickers();
-  let forexData = null;
-  if (TWELVE_DATA_API_KEY) {
-    forexData = await fetchTwelveDataBatch(['EUR/USD', 'USD/JPY', 'GBP/USD', 'AUD/USD', 'USD/CAD', 'USD/CHF', 'GBP/JPY', 'EUR/JPY']);
+const MOCK_BASE_PRICES = {
+  'EUR/USD': 1.09, 'USD/JPY': 157.5, 'GBP/USD': 1.27, 'AUD/USD': 0.66,
+  'USD/CAD': 1.37, 'USD/CHF': 0.89, 'GBP/JPY': 201, 'EUR/JPY': 171.35,
+  'GOLD': 2412.80, 'SILVER': 31.45, 'OIL': 82.35,
+  'SPX': 5587.20, 'NDX': 20450.80, 'DJI': 41250.30,
+};
+
+export function generateMockCandles(symbol, count = 200, interval = '1h') {
+  const base = MOCK_BASE_PRICES[symbol] || 100;
+  const volatility = symbol.includes('JPY') ? 0.003 : symbol.includes('EUR') || symbol.includes('GBP') ? 0.002 : 0.008;
+  const intervalSeconds = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
+  const step = intervalSeconds[interval] || 3600;
+
+  const candles = [];
+  let price = base;
+  const now = Math.floor(Date.now() / 1000);
+
+  for (let i = count; i > 0; i--) {
+    const change = (Math.random() - 0.5) * volatility;
+    const open = price;
+    const close = price * (1 + change);
+    const high = Math.max(open, close) * (1 + Math.random() * volatility * 0.3);
+    const low = Math.min(open, close) * (1 - Math.random() * volatility * 0.3);
+    candles.push({
+      time: now - i * step,
+      open, high, low, close,
+      volume: Math.random() * 1000000,
+    });
+    price = close;
   }
-  return { cryptoData, forexData };
+  return candles;
+}
+
+export function generateMock24h(symbol) {
+  const base = MOCK_BASE_PRICES[symbol] || 100;
+  const change = (Math.random() - 0.5) * 0.03;
+  return {
+    price: base * (1 + change),
+    change: base * change,
+    changePct: change * 100,
+    high24h: base * 1.012,
+    low24h: base * 0.988,
+    volume: Math.random() * 50000000,
+    quoteVolume: Math.random() * 50000000,
+  };
+}
+
+// ==================== TECHNICAL INDICATORS ====================
+
+export function calcEMA(data, period) {
+  const k = 2 / (period + 1);
+  let ema = data[0].close;
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i === 0) { result.push(ema); continue; }
+    ema = data[i].close * k + ema * (1 - k);
+    result.push(ema);
+  }
+  return result;
+}
+
+export function calcRSI(data, period = 14) {
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const change = data[i].close - data[i - 1].close;
+    if (change > 0) gains += change; else losses -= change;
+  }
+  let avgGain = gains / period, avgLoss = losses / period;
+  const rsi = [50];
+  for (let i = period + 1; i < data.length; i++) {
+    const change = data[i].close - data[i - 1].close;
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? -change : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsi.push(100 - (100 / (1 + rs)));
+  }
+  return rsi;
+}
+
+export function calcBollinger(data, period = 20, mult = 2) {
+  const upper = [], lower = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) { upper.push(data[i].close); lower.push(data[i].close); continue; }
+    const slice = data.slice(i - period + 1, i + 1);
+    const mean = slice.reduce((a, b) => a + b.close, 0) / period;
+    const variance = slice.reduce((a, b) => a + Math.pow(b.close - mean, 2), 0) / period;
+    const std = Math.sqrt(variance);
+    upper.push(mean + mult * std);
+    lower.push(mean - mult * std);
+  }
+  return { upper, lower };
+}
+
+export function isCrypto(symbol) {
+  return ['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'ADA', 'DOT', 'LINK'].includes(symbol.replace('/', ''));
+}
+
+export function getBinanceSymbol(symbol) {
+  return symbol.replace('/', '') + 'USDT';
 }

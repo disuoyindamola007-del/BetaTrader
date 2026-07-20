@@ -1,26 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { 
-  Search, TrendingUp, TrendingDown, ArrowRight, 
+import {
+  Search, TrendingUp, TrendingDown, ArrowRight,
   Activity, BookOpen, Bell, BarChart3,
   ChevronRight, Sparkles, RefreshCw
 } from 'lucide-react';
-import { 
-  mockAssets, marketPulse, watchlist, trending, 
-  newsItems, economicEvents, aiBriefing 
+import {
+  mockAssets, marketPulse, watchlist, trending,
+  newsItems, economicEvents, aiBriefing
 } from '../../data/mockData.js';
-import { fetchBinanceAllTickers } from '../../services/api.js';
+import { fetchBinanceAllTickers, fetchBinanceKlines, isCrypto } from '../../services/api.js';
+import { createChart, CandlestickSeries } from 'lightweight-charts';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
 export default function HomeScreen() {
-  const { navigateToAsset, setActiveTab } = useApp();
+  const { navigateToAsset, setActiveTab, userName } = useApp();
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
   const [livePrices, setLivePrices] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const homeChartRef = useRef(null);
+  const homeChartInstance = useRef(null);
 
   // Time/session setup
   useEffect(() => {
@@ -53,40 +56,83 @@ export default function HomeScreen() {
       }
       setIsLoading(false);
     }
-
     loadPrices();
-    // Refresh every 30 seconds
     const refreshInterval = setInterval(loadPrices, 30000);
     return () => clearInterval(refreshInterval);
+  }, []);
+
+  // Home chart - BTC/USDT 1h
+  useEffect(() => {
+    async function loadHomeChart() {
+      if (!homeChartRef.current) return;
+      const candles = await fetchBinanceKlines('BTC', '1h', 100);
+      if (candles.length === 0) return;
+
+      if (homeChartInstance.current) {
+        homeChartInstance.current.remove();
+        homeChartInstance.current = null;
+      }
+
+      const chart = createChart(homeChartRef.current, {
+        layout: {
+          background: { color: 'transparent' },
+          textColor: '#94a3b8',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        },
+        grid: {
+          vertLines: { color: 'rgba(51, 65, 85, 0.3)' },
+          horzLines: { color: 'rgba(51, 65, 85, 0.3)' },
+        },
+        crosshair: { mode: 0 },
+        rightPriceScale: { borderColor: 'rgba(51, 65, 85, 0.5)' },
+        timeScale: { borderColor: 'rgba(51, 65, 85, 0.5)', timeVisible: true },
+        height: 180,
+        handleScroll: false,
+        handleScale: false,
+      });
+
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: '#10b981', downColor: '#ef4444',
+        borderUpColor: '#10b981', borderDownColor: '#ef4444',
+        wickUpColor: '#10b981', wickDownColor: '#ef4444',
+      });
+      candleSeries.setData(candles);
+      chart.timeScale().fitContent();
+      homeChartInstance.current = chart;
+
+      const handleResize = () => {
+        if (homeChartRef.current && homeChartInstance.current) {
+          homeChartInstance.current.applyOptions({ width: homeChartRef.current.clientWidth });
+        }
+      };
+      window.addEventListener('resize', handleResize);
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        if (homeChartInstance.current) {
+          homeChartInstance.current.remove();
+          homeChartInstance.current = null;
+        }
+      };
+    }
+    loadHomeChart();
   }, []);
 
   // Merge live prices with mock data
   const getAssetData = (symbol) => {
     const mock = mockAssets.find(a => a.symbol === symbol);
     const live = livePrices[symbol.replace('/', '')];
-
     if (live && mock) {
-      return {
-        ...mock,
-        price: live.price,
-        change: live.change,
-        changePct: live.changePct,
-      };
+      return { ...mock, price: live.price, change: live.change, changePct: live.changePct };
     }
     return mock;
   };
 
-  // Get trending from live data
   const getLiveTrending = () => {
     const cryptoSymbols = ['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'ADA', 'DOT', 'LINK'];
     const liveTrending = cryptoSymbols
-      .map(sym => ({
-        symbol: sym,
-        ...livePrices[sym],
-      }))
+      .map(sym => ({ symbol: sym, ...livePrices[sym] }))
       .filter(item => item.price)
       .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
-
     return {
       gainers: liveTrending.filter(t => t.changePct > 0).slice(0, 3),
       losers: liveTrending.filter(t => t.changePct < 0).slice(0, 3),
@@ -113,9 +159,7 @@ export default function HomeScreen() {
           <h1 className="text-xl font-extrabold tracking-tight">BetaTrader</h1>
         </div>
         <div className="flex items-center gap-2">
-          {isLoading && (
-            <RefreshCw size={16} className="text-emerald-400 animate-spin" />
-          )}
+          {isLoading && <RefreshCw size={16} className="text-emerald-400 animate-spin" />}
           {lastUpdated && (
             <span className="text-[10px] text-slate-500">
               {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
@@ -129,7 +173,7 @@ export default function HomeScreen() {
 
       {/* Greeting */}
       <div className="mb-5">
-        <p className="text-sm text-slate-400">{greeting}, Trader</p>
+        <p className="text-sm text-slate-400">{greeting}, {userName}</p>
         <p className="text-xs text-slate-500">{session} &bull; {currentTime} UTC</p>
       </div>
 
@@ -143,9 +187,7 @@ export default function HomeScreen() {
           <span className="text-sm font-semibold text-slate-100">{aiBriefing.sentiment}</span>
           <span className="badge-bullish">{aiBriefing.confidence}% Conf</span>
         </div>
-        <p className="text-[13px] text-slate-300 leading-relaxed mb-4">
-          {aiBriefing.summary}
-        </p>
+        <p className="text-[13px] text-slate-300 leading-relaxed mb-4">{aiBriefing.summary}</p>
         <div className="flex gap-4 mb-4">
           <div>
             <p className="text-[10px] text-slate-500 uppercase tracking-wider">Volatility</p>
@@ -157,8 +199,7 @@ export default function HomeScreen() {
           </div>
         </div>
         <button className="w-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-emerald-500/15 transition-colors">
-          Read Full Analysis
-          <ArrowRight size={14} />
+          Read Full Analysis <ArrowRight size={14} />
         </button>
       </div>
 
@@ -173,7 +214,7 @@ export default function HomeScreen() {
               <p className="text-[10px] text-slate-500 mb-1">{item.label}</p>
               <p className="text-base font-bold font-mono text-slate-100">{item.value}</p>
               <p className={`text-[10px] font-medium ${
-                item.color === 'emerald' ? 'text-emerald-400' : 
+                item.color === 'emerald' ? 'text-emerald-400' :
                 item.color === 'warning' ? 'text-amber-400' : 'text-slate-400'
               }`}>{item.sublabel}</p>
             </div>
@@ -181,20 +222,36 @@ export default function HomeScreen() {
         </div>
       </div>
 
+      {/* Live Chart Preview */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <span className="section-title">BTC/USDT — 1H</span>
+          <button
+            onClick={() => {
+              const btcAsset = mockAssets.find(a => a.symbol === 'BTC');
+              if (btcAsset) navigateToAsset(btcAsset);
+            }}
+            className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1"
+          >
+            Open <ChevronRight size={12} />
+          </button>
+        </div>
+        <div className="glass-card p-2">
+          <div ref={homeChartRef} className="w-full h-44 rounded-lg" />
+        </div>
+      </div>
+
       {/* Watchlist */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">Watchlist</span>
-          <button 
-            onClick={() => setActiveTab('markets')}
-            className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1"
-          >
+          <button onClick={() => setActiveTab('markets')} className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1">
             View All <ChevronRight size={12} />
           </button>
         </div>
         <div className="flex flex-col gap-2">
           {watchlistAssets.map((asset) => (
-            <button 
+            <button
               key={asset.symbol}
               onClick={() => navigateToAsset(asset)}
               className="glass-card-hover p-3.5 flex items-center justify-between text-left"
@@ -207,8 +264,8 @@ export default function HomeScreen() {
               </div>
               <div className="text-right">
                 <p className="text-sm font-bold font-mono">
-                  {asset.symbol.includes('BTC') || asset.symbol === 'BTC' 
-                    ? `$${asset.price?.toLocaleString() || asset.price}` 
+                  {asset.symbol.includes('BTC') || asset.symbol === 'BTC'
+                    ? `$${asset.price?.toLocaleString() || asset.price}`
                     : asset.price?.toFixed(4) || asset.price}
                 </p>
                 <PriceChange value={asset.change} pct={asset.changePct} />
@@ -218,7 +275,7 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Trending Today - LIVE DATA */}
+      {/* Trending Today */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">Trending Today</span>
@@ -231,7 +288,7 @@ export default function HomeScreen() {
         </div>
         <div className="flex gap-2 overflow-x-auto scroll-hide pb-1">
           {liveTrending.gainers.map((item) => (
-            <button 
+            <button
               key={item.symbol}
               onClick={() => {
                 const asset = mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 };
@@ -245,7 +302,7 @@ export default function HomeScreen() {
             </button>
           ))}
           {liveTrending.losers.map((item) => (
-            <button 
+            <button
               key={item.symbol}
               onClick={() => {
                 const asset = mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 };
@@ -278,9 +335,7 @@ export default function HomeScreen() {
               <p className="text-sm font-semibold leading-relaxed mb-3">{news.headline}</p>
               <div className="flex gap-2 flex-wrap">
                 {news.related.map(tag => (
-                  <span key={tag} className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-1 rounded-md border border-slate-700/30">
-                    {tag}
-                  </span>
+                  <span key={tag} className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-1 rounded-md border border-slate-700/30">{tag}</span>
                 ))}
                 <span className="text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded-md border border-emerald-500/15 flex items-center gap-1">
                   <Sparkles size={10} /> AI Summary
@@ -320,31 +375,19 @@ export default function HomeScreen() {
           <span className="section-title">Quick Actions</span>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
-          <button 
-            onClick={() => setActiveTab('markets')}
-            className="glass-card p-4 flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-colors group"
-          >
+          <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-colors group">
             <Search size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" />
             <span className="text-xs font-semibold text-slate-300">Analyze Asset</span>
           </button>
-          <button 
-            onClick={() => setActiveTab('markets')}
-            className="glass-card p-4 flex flex-col items-center gap-2 hover:border-blue-500/30 transition-colors group"
-          >
+          <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-blue-500/30 transition-colors group">
             <BarChart3 size={20} className="text-blue-400 group-hover:scale-110 transition-transform" />
             <span className="text-xs font-semibold text-slate-300">Run Backtest</span>
           </button>
-          <button 
-            onClick={() => setActiveTab('journal')}
-            className="glass-card p-4 flex flex-col items-center gap-2 hover:border-violet-500/30 transition-colors group"
-          >
+          <button onClick={() => setActiveTab('journal')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-violet-500/30 transition-colors group">
             <BookOpen size={20} className="text-violet-400 group-hover:scale-110 transition-transform" />
             <span className="text-xs font-semibold text-slate-300">Open Journal</span>
           </button>
-          <button 
-            onClick={() => setActiveTab('alerts')}
-            className="glass-card p-4 flex flex-col items-center gap-2 hover:border-amber-500/30 transition-colors group"
-          >
+          <button onClick={() => setActiveTab('alerts')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-amber-500/30 transition-colors group">
             <Bell size={20} className="text-amber-400 group-hover:scale-110 transition-transform" />
             <span className="text-xs font-semibold text-slate-300">Create Alert</span>
           </button>
