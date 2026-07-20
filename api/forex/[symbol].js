@@ -10,7 +10,12 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'TWELVE_DATA_API_KEY not configured' });
   }
 
-  const cleanSymbol = symbol.toUpperCase().replace('/', '');
+  // Twelve Data requires forex pairs in "BASE/QUOTE" format (e.g. EUR/USD).
+  // If the incoming symbol has no slash, assume it's a 6-letter pair like "EURUSD" and insert one.
+  let cleanSymbol = symbol.toUpperCase();
+  if (!cleanSymbol.includes('/') && cleanSymbol.length === 6) {
+    cleanSymbol = `${cleanSymbol.slice(0, 3)}/${cleanSymbol.slice(3)}`;
+  }
   const intervalMap = { '1m': '1min', '5m': '5min', '15m': '15min', '1h': '1h', '4h': '4h', '1d': '1day', '1w': '1week' };
   const tdInterval = intervalMap[interval] || '1h';
 
