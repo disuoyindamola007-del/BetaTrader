@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../AppContext.jsx';
 import {
   Search, TrendingUp, TrendingDown, ArrowRight,
@@ -9,10 +9,16 @@ import {
   mockAssets, marketPulse, watchlist, trending,
   newsItems, economicEvents, aiBriefing
 } from '../../data/mockData.js';
-import { fetchBinanceAllTickers, fetchBinanceKlines, isCrypto } from '../../services/api.js';
-import { createChart, CandlestickSeries } from 'lightweight-charts';
+import { fetchBinanceAllTickers, fetchBinanceKlines } from '../../services/api.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
+
+let LightweightCharts = null;
+async function loadCharts() {
+  if (LightweightCharts) return LightweightCharts;
+  LightweightCharts = await import('lightweight-charts');
+  return LightweightCharts;
+}
 
 export default function HomeScreen() {
   const { navigateToAsset, setActiveTab, userName } = useApp();
@@ -22,10 +28,10 @@ export default function HomeScreen() {
   const [livePrices, setLivePrices] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [chartError, setChartError] = useState(null);
   const homeChartRef = useRef(null);
   const homeChartInstance = useRef(null);
 
-  // Time/session setup
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good Morning');
@@ -45,7 +51,6 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch real Binance prices
   useEffect(() => {
     async function loadPrices() {
       setIsLoading(true);
@@ -61,19 +66,25 @@ export default function HomeScreen() {
     return () => clearInterval(refreshInterval);
   }, []);
 
-  // Home chart - BTC/USDT 1h
-  useEffect(() => {
-    async function loadHomeChart() {
-      if (!homeChartRef.current) return;
+  const renderHomeChart = useCallback(async () => {
+    if (!homeChartRef.current) return;
+    setChartError(null);
+
+    try {
       const candles = await fetchBinanceKlines('BTC', '1h', 100);
-      if (candles.length === 0) return;
+      if (!candles || candles.length === 0) {
+        setChartError('No chart data');
+        return;
+      }
+
+      const charts = await loadCharts();
 
       if (homeChartInstance.current) {
         homeChartInstance.current.remove();
         homeChartInstance.current = null;
       }
 
-      const chart = createChart(homeChartRef.current, {
+      const chart = charts.createChart(homeChartRef.current, {
         layout: {
           background: { color: 'transparent' },
           textColor: '#94a3b8',
@@ -100,24 +111,32 @@ export default function HomeScreen() {
       chart.timeScale().fitContent();
       homeChartInstance.current = chart;
 
-      const handleResize = () => {
-        if (homeChartRef.current && homeChartInstance.current) {
-          homeChartInstance.current.applyOptions({ width: homeChartRef.current.clientWidth });
+      const resizeObserver = new ResizeObserver(() => {
+        if (homeChartInstance.current && homeChartRef.current) {
+          homeChartInstance.current.applyOptions({
+            width: homeChartRef.current.clientWidth,
+            height: 180,
+          });
         }
-      };
-      window.addEventListener('resize', handleResize);
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        if (homeChartInstance.current) {
-          homeChartInstance.current.remove();
-          homeChartInstance.current = null;
-        }
-      };
+      });
+      resizeObserver.observe(homeChartRef.current);
+
+    } catch (err) {
+      console.error('Home chart error:', err);
+      setChartError(err.message);
     }
-    loadHomeChart();
   }, []);
 
-  // Merge live prices with mock data
+  useEffect(() => {
+    renderHomeChart();
+    return () => {
+      if (homeChartInstance.current) {
+        homeChartInstance.current.remove();
+        homeChartInstance.current = null;
+      }
+    };
+  }, [renderHomeChart]);
+
   const getAssetData = (symbol) => {
     const mock = mockAssets.find(a => a.symbol === symbol);
     const live = livePrices[symbol.replace('/', '')];
@@ -236,8 +255,22 @@ export default function HomeScreen() {
             Open <ChevronRight size={12} />
           </button>
         </div>
-        <div className="glass-card p-2">
-          <div ref={homeChartRef} className="w-full h-44 rounded-lg" />
+        <div className="glass-card p-2 relative" style={{ minHeight: '180px' }}>
+          <div
+            ref={homeChartRef}
+            style={{ width: '100%', height: '180px', position: 'relative' }}
+          />
+          {chartError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg">
+              <p className="text-xs text-red-400">{chartError}</p>
+              <button
+                onClick={renderHomeChart}
+                className="mt-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs rounded-lg"
+              >
+                Retry
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -287,7 +320,7 @@ export default function HomeScreen() {
           )}
         </div>
         <div className="flex gap-2 overflow-x-auto scroll-hide pb-1">
-          {liveTrending.gainers.map((item) => (
+          {liveTrending.gainers?.map((item) => (
             <button
               key={item.symbol}
               onClick={() => {
@@ -301,7 +334,7 @@ export default function HomeScreen() {
               <span className="text-sm font-bold font-mono text-emerald-400">+{item.changePct?.toFixed(2)}%</span>
             </button>
           ))}
-          {liveTrending.losers.map((item) => (
+          {liveTrending.losers?.map((item) => (
             <button
               key={item.symbol}
               onClick={() => {

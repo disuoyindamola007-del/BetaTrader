@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../AppContext.jsx';
 import { ArrowLeft, Heart, Share2, Bell, Sparkles } from 'lucide-react';
-import { createChart, CandlestickSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 import PriceChange from '../shared/PriceChange.jsx';
 import {
   fetchBinanceKlines, fetchBinance24h,
@@ -11,156 +10,195 @@ import {
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
 
+// Dynamically import lightweight-charts to avoid SSR/build issues
+let LightweightCharts = null;
+async function loadCharts() {
+  if (LightweightCharts) return LightweightCharts;
+  LightweightCharts = await import('lightweight-charts');
+  return LightweightCharts;
+}
+
 export default function AssetDetail() {
   const { selectedAsset, goBack, setActiveTab } = useApp();
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
+  const seriesRef = useRef({});
   const [timeframe, setTimeframe] = useState('1h');
   const [assetData, setAssetData] = useState(null);
-  const [candles, setCandles] = useState([]);
   const [indicators, setIndicators] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const [chartError, setChartError] = useState(null);
 
   const symbol = selectedAsset?.symbol;
-  const crypto = isCrypto(symbol);
+  const crypto = symbol ? isCrypto(symbol) : false;
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!symbol) return;
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, timeframe]);
-
-  async function loadData() {
     setIsLoading(true);
-    let data24h, klines;
+    setChartError(null);
 
-    if (crypto) {
-      [data24h, klines] = await Promise.all([
-        fetchBinance24h(symbol),
-        fetchBinanceKlines(symbol, timeframe, 200),
-      ]);
-    } else {
-      data24h = generateMock24h(symbol);
-      klines = generateMockCandles(symbol, 200, timeframe);
-    }
+    try {
+      let data24h, klines;
 
-    setAssetData(data24h);
-    setCandles(klines);
-
-    if (klines.length > 0) {
-      const ema9 = calcEMA(klines, 9);
-      const ema21 = calcEMA(klines, 21);
-      const ema50 = calcEMA(klines, 50);
-      const rsi = calcRSI(klines);
-      const bb = calcBollinger(klines);
-      const last = klines.length - 1;
-
-      setIndicators({
-        rsi: rsi[rsi.length - 1].toFixed(1),
-        ema9: ema9[last],
-        ema21: ema21[last],
-        ema50: ema50[last],
-        bbUpper: bb.upper[last],
-        bbLower: bb.lower[last],
-      });
-    }
-    setIsLoading(false);
-  }
-
-  // Render TradingView chart
-  useEffect(() => {
-    if (!chartContainerRef.current || candles.length === 0) return;
-
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
-    }
-
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { color: 'transparent' },
-        textColor: '#94a3b8',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-      },
-      grid: {
-        vertLines: { color: 'rgba(51, 65, 85, 0.3)' },
-        horzLines: { color: 'rgba(51, 65, 85, 0.3)' },
-      },
-      crosshair: { mode: 1 },
-      rightPriceScale: {
-        borderColor: 'rgba(51, 65, 85, 0.5)',
-        scaleMargins: { top: 0.1, bottom: 0.25 },
-      },
-      timeScale: {
-        borderColor: 'rgba(51, 65, 85, 0.5)',
-        timeVisible: true,
-      },
-      height: 320,
-    });
-
-    const candleSeries = chart.addCandlestickSeries({
-      upColor: '#10b981',
-      downColor: '#ef4444',
-      borderUpColor: '#10b981',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#10b981',
-      wickDownColor: '#ef4444',
-    });
-    candleSeries.setData(candles);
-
-    // Volume
-    const volSeries = chart.addHistogramSeries({
-      color: '#10b981',
-      priceFormat: { type: 'volume' },
-      priceScaleId: '',
-      scaleMargins: { top: 0.85, bottom: 0 },
-    });
-    volSeries.setData(
-      candles.map(d => ({
-        time: d.time,
-        value: d.volume,
-        color: d.close >= d.open ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)',
-      }))
-    );
-
-    // EMA lines
-    const ema9 = calcEMA(candles, 9);
-    const ema21 = calcEMA(candles, 21);
-    const ema9Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, title: 'EMA 9' });
-    const ema21Series = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, title: 'EMA 21' });
-    ema9Series.setData(candles.map((d, i) => ({ time: d.time, value: ema9[i] })));
-    ema21Series.setData(candles.map((d, i) => ({ time: d.time, value: ema21[i] })));
-
-    chart.timeScale().fitContent();
-    chartRef.current = chart;
-
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+      if (crypto) {
+        [data24h, klines] = await Promise.all([
+          fetchBinance24h(symbol),
+          fetchBinanceKlines(symbol, timeframe, 200),
+        ]);
+      } else {
+        data24h = generateMock24h(symbol);
+        klines = generateMockCandles(symbol, 200, timeframe);
       }
-    };
-    window.addEventListener('resize', handleResize);
 
+      setAssetData(data24h);
+
+      if (klines && klines.length > 0) {
+        const ema9 = calcEMA(klines, 9);
+        const ema21 = calcEMA(klines, 21);
+        const ema50 = calcEMA(klines, 50);
+        const rsi = calcRSI(klines);
+        const bb = calcBollinger(klines);
+        const last = klines.length - 1;
+
+        setIndicators({
+          rsi: rsi[rsi.length - 1].toFixed(1),
+          ema9: ema9[last],
+          ema21: ema21[last],
+          ema50: ema50[last],
+          bbUpper: bb.upper[last],
+          bbLower: bb.lower[last],
+        });
+
+        renderChart(klines);
+      } else {
+        setChartError('No candle data available');
+      }
+    } catch (err) {
+      console.error('AssetDetail load error:', err);
+      setChartError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [symbol, crypto, timeframe]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Cleanup chart on unmount
+  useEffect(() => {
     return () => {
-      window.removeEventListener('resize', handleResize);
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
       }
     };
-  }, [candles]);
+  }, []);
+
+  async function renderChart(candles) {
+    if (!chartContainerRef.current) return;
+
+    try {
+      const charts = await loadCharts();
+
+      // Remove old chart
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+        seriesRef.current = {};
+      }
+
+      const chart = charts.createChart(chartContainerRef.current, {
+        layout: {
+          background: { color: 'transparent' },
+          textColor: '#94a3b8',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        },
+        grid: {
+          vertLines: { color: 'rgba(51, 65, 85, 0.3)' },
+          horzLines: { color: 'rgba(51, 65, 85, 0.3)' },
+        },
+        crosshair: { mode: 1 },
+        rightPriceScale: {
+          borderColor: 'rgba(51, 65, 85, 0.5)',
+          scaleMargins: { top: 0.1, bottom: 0.25 },
+        },
+        timeScale: {
+          borderColor: 'rgba(51, 65, 85, 0.5)',
+          timeVisible: true,
+        },
+        height: 320,
+      });
+
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: '#10b981',
+        downColor: '#ef4444',
+        borderUpColor: '#10b981',
+        borderDownColor: '#ef4444',
+        wickUpColor: '#10b981',
+        wickDownColor: '#ef4444',
+      });
+      candleSeries.setData(candles);
+      seriesRef.current.candles = candleSeries;
+
+      // Volume
+      const volSeries = chart.addHistogramSeries({
+        color: '#10b981',
+        priceFormat: { type: 'volume' },
+        priceScaleId: '',
+        scaleMargins: { top: 0.85, bottom: 0 },
+      });
+      volSeries.setData(
+        candles.map(d => ({
+          time: d.time,
+          value: d.volume,
+          color: d.close >= d.open ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)',
+        }))
+      );
+      seriesRef.current.volume = volSeries;
+
+      // EMA lines
+      const ema9 = calcEMA(candles, 9);
+      const ema21 = calcEMA(candles, 21);
+      const ema9Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, title: 'EMA 9' });
+      const ema21Series = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, title: 'EMA 21' });
+      ema9Series.setData(candles.map((d, i) => ({ time: d.time, value: ema9[i] })));
+      ema21Series.setData(candles.map((d, i) => ({ time: d.time, value: ema21[i] })));
+      seriesRef.current.ema9 = ema9Series;
+      seriesRef.current.ema21 = ema21Series;
+
+      chart.timeScale().fitContent();
+      chartRef.current = chart;
+
+      // Handle resize
+      const resizeObserver = new ResizeObserver(() => {
+        if (chartRef.current && chartContainerRef.current) {
+          chartRef.current.applyOptions({
+            width: chartContainerRef.current.clientWidth,
+            height: 320,
+          });
+        }
+      });
+      resizeObserver.observe(chartContainerRef.current);
+
+    } catch (err) {
+      console.error('Chart render error:', err);
+      setChartError('Failed to render chart: ' + err.message);
+    }
+  }
 
   if (!selectedAsset) return null;
 
   const formatPrice = (price) => {
-    if (!price && price !== 0) return '--';
+    if (price === null || price === undefined) return '--';
+    if (price === 0) return '0.00';
     if (price < 1) return price.toFixed(5);
     if (price < 1000) return price.toFixed(2);
     return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
   };
 
   const formatVol = (n) => {
-    if (!n) return '--';
+    if (n === null || n === undefined) return '--';
     if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
     if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
     if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
@@ -196,7 +234,9 @@ export default function AssetDetail() {
           <p className="text-3xl font-extrabold font-mono mb-1">
             ${formatPrice(assetData?.price)}
           </p>
-          <PriceChange value={assetData?.change} pct={assetData?.changePct} size="lg" />
+          {assetData?.changePct !== undefined && (
+            <PriceChange value={assetData?.change} pct={assetData?.changePct} size="lg" />
+          )}
         </div>
 
         {/* Timeframes */}
@@ -205,7 +245,8 @@ export default function AssetDetail() {
             <button
               key={tf}
               onClick={() => setTimeframe(tf)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              disabled={isLoading}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all disabled:opacity-50 ${
                 timeframe === tf
                   ? 'bg-emerald-500 text-slate-950'
                   : 'bg-slate-800/60 text-slate-400 border border-slate-700/30 hover:text-slate-200'
@@ -217,11 +258,27 @@ export default function AssetDetail() {
         </div>
 
         {/* Chart */}
-        <div className="glass-card p-2 mb-5">
-          <div ref={chartContainerRef} className="w-full h-80 rounded-lg" />
+        <div className="glass-card p-2 mb-5 relative" style={{ minHeight: '320px' }}>
+          <div
+            ref={chartContainerRef}
+            style={{ width: '100%', height: '320px', position: 'relative' }}
+          />
           {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50 rounded-lg">
-              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg z-10">
+              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-2" />
+              <p className="text-xs text-slate-500">Loading chart...</p>
+            </div>
+          )}
+          {chartError && !isLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg z-10">
+              <p className="text-sm text-red-400 mb-1">Chart Error</p>
+              <p className="text-xs text-slate-500">{chartError}</p>
+              <button
+                onClick={loadData}
+                className="mt-3 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-lg border border-emerald-500/30"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>
@@ -279,16 +336,16 @@ export default function AssetDetail() {
           </div>
         </div>
 
-        {/* AI Analysis (static for now, Batch 4 will make it live) */}
+        {/* AI Analysis */}
         <div className="mb-5 bg-gradient-to-br from-emerald-500/8 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles size={16} className="text-emerald-400" />
             <span className="text-[11px] font-bold tracking-wider text-emerald-400 uppercase">AI Analysis</span>
           </div>
           <p className="text-sm text-slate-300 leading-relaxed">
-            {assetData?.changePct > 2
+            {(assetData?.changePct || 0) > 2
               ? `${selectedAsset.symbol} is showing strong bullish momentum with above-average volume. Consider waiting for a pullback before entering long.`
-              : assetData?.changePct < -2
+              : (assetData?.changePct || 0) < -2
               ? `${selectedAsset.symbol} is in a downtrend. Support levels may be tested. Watch for reversal signals before considering a long position.`
               : `${selectedAsset.symbol} is consolidating. Key levels to watch: support at recent lows, resistance at recent highs. Patience is key here.`}
           </p>
