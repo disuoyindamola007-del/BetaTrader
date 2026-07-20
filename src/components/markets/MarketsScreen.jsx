@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { Search, ChevronRight } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw } from 'lucide-react';
 import { mockAssets } from '../../data/mockData.js';
+import { fetchBinanceAllTickers } from '../../services/api.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
@@ -11,8 +12,37 @@ export default function MarketsScreen() {
   const { navigateToAsset } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
+  const [livePrices, setLivePrices] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
 
-  const filteredAssets = mockAssets.filter(asset => {
+  useEffect(() => {
+    async function loadPrices() {
+      setIsLoading(true);
+      const binanceData = await fetchBinanceAllTickers();
+      if (binanceData) setLivePrices(binanceData);
+      setIsLoading(false);
+    }
+    loadPrices();
+    const interval = setInterval(loadPrices, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Merge live prices with mock data
+  const mergedAssets = mockAssets.map(asset => {
+    const cleanSymbol = asset.symbol.replace('/', '');
+    const live = livePrices[cleanSymbol];
+    if (live) {
+      return {
+        ...asset,
+        price: live.price,
+        change: live.change,
+        changePct: live.changePct,
+      };
+    }
+    return asset;
+  });
+
+  const filteredAssets = mergedAssets.filter(asset => {
     const matchesSearch = asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          asset.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === 'All' || 
@@ -22,7 +52,10 @@ export default function MarketsScreen() {
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
-      <h1 className="text-xl font-extrabold mb-5">Markets</h1>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-xl font-extrabold">Markets</h1>
+        {isLoading && <RefreshCw size={16} className="text-emerald-400 animate-spin" />}
+      </div>
 
       {/* Search */}
       <div className="relative mb-4">
@@ -68,7 +101,11 @@ export default function MarketsScreen() {
             <p className="text-[11px] text-slate-500 mb-3 truncate">{asset.name}</p>
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-sm font-bold font-mono">{asset.price.toLocaleString()}</p>
+                <p className="text-sm font-bold font-mono">
+                  {asset.category === 'crypto' 
+                    ? `$${asset.price?.toLocaleString()}` 
+                    : asset.price?.toFixed(4)}
+                </p>
                 <PriceChange value={asset.change} pct={asset.changePct} />
               </div>
               <AIBadge bias={asset.bias} confidence={asset.confidence} />

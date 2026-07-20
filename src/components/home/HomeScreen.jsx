@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../../AppContext.jsx';
 import { 
   Search, TrendingUp, TrendingDown, ArrowRight, 
-  Activity, Zap, BookOpen, Bell, BarChart3,
-  ChevronRight, Sparkles
+  Activity, BookOpen, Bell, BarChart3,
+  ChevronRight, Sparkles, RefreshCw
 } from 'lucide-react';
 import { 
   mockAssets, marketPulse, watchlist, trending, 
   newsItems, economicEvents, aiBriefing 
 } from '../../data/mockData.js';
+import { fetchBinanceAllTickers } from '../../services/api.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
@@ -17,7 +18,11 @@ export default function HomeScreen() {
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
+  const [livePrices, setLivePrices] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
+  // Time/session setup
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good Morning');
@@ -37,7 +42,59 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  const watchlistAssets = mockAssets.filter(a => watchlist.includes(a.symbol));
+  // Fetch real Binance prices
+  useEffect(() => {
+    async function loadPrices() {
+      setIsLoading(true);
+      const binanceData = await fetchBinanceAllTickers();
+      if (binanceData) {
+        setLivePrices(binanceData);
+        setLastUpdated(new Date());
+      }
+      setIsLoading(false);
+    }
+
+    loadPrices();
+    // Refresh every 30 seconds
+    const refreshInterval = setInterval(loadPrices, 30000);
+    return () => clearInterval(refreshInterval);
+  }, []);
+
+  // Merge live prices with mock data
+  const getAssetData = (symbol) => {
+    const mock = mockAssets.find(a => a.symbol === symbol);
+    const live = livePrices[symbol.replace('/', '')];
+
+    if (live && mock) {
+      return {
+        ...mock,
+        price: live.price,
+        change: live.change,
+        changePct: live.changePct,
+      };
+    }
+    return mock;
+  };
+
+  // Get trending from live data
+  const getLiveTrending = () => {
+    const cryptoSymbols = ['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'ADA', 'DOT', 'LINK'];
+    const liveTrending = cryptoSymbols
+      .map(sym => ({
+        symbol: sym,
+        ...livePrices[sym],
+      }))
+      .filter(item => item.price)
+      .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+
+    return {
+      gainers: liveTrending.filter(t => t.changePct > 0).slice(0, 3),
+      losers: liveTrending.filter(t => t.changePct < 0).slice(0, 3),
+    };
+  };
+
+  const watchlistAssets = watchlist.map(getAssetData).filter(Boolean);
+  const liveTrending = Object.keys(livePrices).length > 0 ? getLiveTrending() : trending;
 
   const getImpactColor = (impact) => {
     if (impact === 'high') return 'bg-red-500/15 text-red-400 border-red-500/20';
@@ -55,7 +112,15 @@ export default function HomeScreen() {
           </div>
           <h1 className="text-xl font-extrabold tracking-tight">BetaTrader</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {isLoading && (
+            <RefreshCw size={16} className="text-emerald-400 animate-spin" />
+          )}
+          {lastUpdated && (
+            <span className="text-[10px] text-slate-500">
+              {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+            </span>
+          )}
           <button className="w-9 h-9 glass-card flex items-center justify-center text-amber-400 hover:text-amber-300 transition-colors">
             <Activity size={18} />
           </button>
@@ -141,7 +206,11 @@ export default function HomeScreen() {
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm font-bold font-mono">{asset.price.toLocaleString()}</p>
+                <p className="text-sm font-bold font-mono">
+                  {asset.symbol.includes('BTC') || asset.symbol === 'BTC' 
+                    ? `$${asset.price?.toLocaleString() || asset.price}` 
+                    : asset.price?.toFixed(4) || asset.price}
+                </p>
                 <PriceChange value={asset.change} pct={asset.changePct} />
               </div>
             </button>
@@ -149,38 +218,44 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Trending */}
+      {/* Trending Today - LIVE DATA */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">Trending Today</span>
+          {Object.keys(livePrices).length > 0 && (
+            <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Live
+            </span>
+          )}
         </div>
         <div className="flex gap-2 overflow-x-auto scroll-hide pb-1">
-          {trending.gainers.map((item) => (
+          {liveTrending.gainers.map((item) => (
             <button 
               key={item.symbol}
               onClick={() => {
-                const asset = mockAssets.find(a => a.symbol === item.symbol);
-                if (asset) navigateToAsset(asset);
+                const asset = mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 };
+                navigateToAsset(asset);
               }}
               className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/8 border border-emerald-500/15 whitespace-nowrap hover:bg-emerald-500/12 transition-colors"
             >
               <span className="text-sm font-semibold">{item.symbol}</span>
               <TrendingUp size={14} className="text-emerald-400" />
-              <span className="text-sm font-bold font-mono text-emerald-400">+{item.changePct}%</span>
+              <span className="text-sm font-bold font-mono text-emerald-400">+{item.changePct?.toFixed(2)}%</span>
             </button>
           ))}
-          {trending.losers.map((item) => (
+          {liveTrending.losers.map((item) => (
             <button 
               key={item.symbol}
               onClick={() => {
-                const asset = mockAssets.find(a => a.symbol === item.symbol);
-                if (asset) navigateToAsset(asset);
+                const asset = mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 };
+                navigateToAsset(asset);
               }}
               className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/8 border border-red-500/15 whitespace-nowrap hover:bg-red-500/12 transition-colors"
             >
               <span className="text-sm font-semibold">{item.symbol}</span>
               <TrendingDown size={14} className="text-red-400" />
-              <span className="text-sm font-bold font-mono text-red-400">{item.changePct}%</span>
+              <span className="text-sm font-bold font-mono text-red-400">{item.changePct?.toFixed(2)}%</span>
             </button>
           ))}
         </div>
