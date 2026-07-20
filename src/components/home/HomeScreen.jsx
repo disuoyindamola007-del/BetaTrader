@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../../AppContext.jsx';
 import {
   Search, TrendingUp, TrendingDown, ArrowRight,
   Activity, BookOpen, Bell, BarChart3,
-  ChevronRight, Sparkles, RefreshCw
+  ChevronRight, Sparkles, RefreshCw, Clock
 } from 'lucide-react';
 import {
   mockAssets, marketPulse, watchlist, trending,
   newsItems, economicEvents, aiBriefing
 } from '../../data/mockData.js';
-import { fetchCryptoBatchQuotes, fetchCandles } from '../../services/api.js';
+import { useMarketData, useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarketData.js';
+import { getCategory } from '../../services/marketDataService.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
@@ -18,13 +19,10 @@ export default function HomeScreen() {
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
-  const [livePrices, setLivePrices] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [chartError, setChartError] = useState(null);
   const homeChartRef = useRef(null);
   const homeChartInstance = useRef(null);
 
+  // Time/session
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good Morning');
@@ -44,52 +42,30 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    async function loadPrices() {
-      setIsLoading(true);
-      const cryptoData = await fetchCryptoBatchQuotes();
-      if (cryptoData && !cryptoData.error) {
-        setLivePrices(cryptoData);
-        setLastUpdated(new Date());
-      }
-      setIsLoading(false);
-    }
-    loadPrices();
-    const refreshInterval = setInterval(loadPrices, 30000);
-    return () => clearInterval(refreshInterval);
-  }, []);
+  // Data via centralized hooks
+  const { data: cryptoData, isLoading: cryptoLoading, isStale: cryptoStale } = useCryptoBatch(true);
+  const { data: btcCandles, error: chartError } = useCandles('BTC', '1h', { enabled: true, limit: 100 });
 
-  const renderHomeChart = useCallback(async () => {
-    if (!homeChartRef.current) return;
-    setChartError(null);
+  const watchlistSymbols = useMemo(() =>
+    watchlist.map(w => w.symbol).filter(s => getCategory(s) !== 'crypto'),
+  []);
+  const { data: watchlistQuotes, isLoading: wlLoading, isStale: wlStale } = useBatchQuotes(watchlistSymbols, watchlistSymbols.length > 0);
 
+  const livePrices = useMemo(() => ({ ...cryptoData, ...watchlistQuotes }), [cryptoData, watchlistQuotes]);
+  const isLoading = cryptoLoading || wlLoading;
+  const isStale = cryptoStale || wlStale;
+
+  // Home chart
+  const renderHomeChart = useCallback(async (candles) => {
+    if (!homeChartRef.current || !candles?.length) return;
     try {
-      const candles = await fetchCandles('BTC', '1h', 100);
-      if (!candles || candles.length === 0) {
-        setChartError('No chart data');
-        return;
-      }
-
       const charts = await import('lightweight-charts');
       const { createChart, CandlestickSeries } = charts;
-
-      if (homeChartInstance.current) {
-        homeChartInstance.current.remove();
-        homeChartInstance.current = null;
-      }
-
+      if (homeChartInstance.current) { homeChartInstance.current.remove(); homeChartInstance.current = null; }
       homeChartRef.current.innerHTML = '';
-
       const chart = createChart(homeChartRef.current, {
-        layout: {
-          background: { color: 'transparent' },
-          textColor: '#94a3b8',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-        },
-        grid: {
-          vertLines: { color: 'rgba(51, 65, 85, 0.3)' },
-          horzLines: { color: 'rgba(51, 65, 85, 0.3)' },
-        },
+        layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontFamily: 'system-ui, -apple-system, sans-serif' },
+        grid: { vertLines: { color: 'rgba(51, 65, 85, 0.3)' }, horzLines: { color: 'rgba(51, 65, 85, 0.3)' } },
         crosshair: { mode: 0 },
         rightPriceScale: { borderColor: 'rgba(51, 65, 85, 0.5)' },
         timeScale: { borderColor: 'rgba(51, 65, 85, 0.5)', timeVisible: true },
@@ -97,7 +73,6 @@ export default function HomeScreen() {
         handleScroll: false,
         handleScale: false,
       });
-
       const candleSeries = chart.addSeries(CandlestickSeries, {
         upColor: '#10b981', downColor: '#ef4444',
         borderUpColor: '#10b981', borderDownColor: '#ef4444',
@@ -106,52 +81,28 @@ export default function HomeScreen() {
       candleSeries.setData(candles);
       chart.timeScale().fitContent();
       homeChartInstance.current = chart;
-
-      const resizeObserver = new ResizeObserver(() => {
+      const ro = new ResizeObserver(() => {
         if (homeChartInstance.current && homeChartRef.current) {
-          homeChartInstance.current.applyOptions({
-            width: homeChartRef.current.clientWidth,
-            height: 180,
-          });
+          homeChartInstance.current.applyOptions({ width: homeChartRef.current.clientWidth, height: 180 });
         }
       });
-      resizeObserver.observe(homeChartRef.current);
-
-    } catch (err) {
-      console.error('Home chart error:', err);
-      setChartError(err.message);
-    }
+      ro.observe(homeChartRef.current);
+    } catch (err) { console.error('Home chart error:', err); }
   }, []);
 
-  useEffect(() => {
-    renderHomeChart();
-    return () => {
-      if (homeChartInstance.current) {
-        homeChartInstance.current.remove();
-        homeChartInstance.current = null;
-      }
-    };
-  }, [renderHomeChart]);
+  useEffect(() => { if (btcCandles?.length) renderHomeChart(btcCandles); }, [btcCandles, renderHomeChart]);
+  useEffect(() => () => { if (homeChartInstance.current) { homeChartInstance.current.remove(); homeChartInstance.current = null; } }, []);
 
   const getAssetData = (symbol) => {
     const mock = mockAssets.find(a => a.symbol === symbol);
     const live = livePrices[symbol.replace('/', '')];
-    if (live && mock) {
-      return { ...mock, price: live.price, change: live.change, changePct: live.changePct };
-    }
-    return mock;
+    return live && mock ? { ...mock, price: live.price, change: live.change, changePct: live.changePct } : mock;
   };
 
   const getLiveTrending = () => {
-    const cryptoSymbols = ['BTC', 'ETH', 'SOL', 'XRP', 'BNB', 'ADA', 'DOT', 'LINK'];
-    const liveTrending = cryptoSymbols
-      .map(sym => ({ symbol: sym, ...livePrices[sym] }))
-      .filter(item => item.price)
-      .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
-    return {
-      gainers: liveTrending.filter(t => t.changePct > 0).slice(0, 3),
-      losers: liveTrending.filter(t => t.changePct < 0).slice(0, 3),
-    };
+    const syms = ['BTC','ETH','SOL','XRP','BNB','ADA','DOT','LINK'];
+    const arr = syms.map(s => ({ symbol: s, ...livePrices[s] })).filter(x => x.price).sort((a,b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+    return { gainers: arr.filter(x => x.changePct > 0).slice(0,3), losers: arr.filter(x => x.changePct < 0).slice(0,3) };
   };
 
   const watchlistAssets = watchlist.map(getAssetData).filter(Boolean);
@@ -165,7 +116,6 @@ export default function HomeScreen() {
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
@@ -175,18 +125,10 @@ export default function HomeScreen() {
         </div>
         <div className="flex items-center gap-2">
           {isLoading && <RefreshCw size={16} className="text-emerald-400 animate-spin" />}
-          {lastUpdated && (
-            <span className="text-[10px] text-slate-500">
-              {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
-            </span>
-          )}
-          <button className="w-9 h-9 glass-card flex items-center justify-center text-amber-400 hover:text-amber-300 transition-colors">
-            <Activity size={18} />
-          </button>
+          {isStale && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Clock size={10} />Stale</span>}
         </div>
       </div>
 
-      {/* Greeting */}
       <div className="mb-5">
         <p className="text-sm text-slate-400">{greeting}, {userName}</p>
         <p className="text-xs text-slate-500">{session} &bull; {currentTime} UTC</p>
@@ -204,14 +146,8 @@ export default function HomeScreen() {
         </div>
         <p className="text-[13px] text-slate-300 leading-relaxed mb-4">{aiBriefing.summary}</p>
         <div className="flex gap-4 mb-4">
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Volatility</p>
-            <p className="text-sm font-semibold text-amber-400">{aiBriefing.volatility}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Key Risk</p>
-            <p className="text-sm font-semibold text-slate-200">ISM Data Tomorrow</p>
-          </div>
+          <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Volatility</p><p className="text-sm font-semibold text-amber-400">{aiBriefing.volatility}</p></div>
+          <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Key Risk</p><p className="text-sm font-semibold text-slate-200">ISM Data Tomorrow</p></div>
         </div>
         <button className="w-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-emerald-500/15 transition-colors">
           Read Full Analysis <ArrowRight size={14} />
@@ -220,18 +156,13 @@ export default function HomeScreen() {
 
       {/* Market Pulse */}
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-3">
-          <span className="section-title">Market Pulse</span>
-        </div>
+        <div className="flex items-center justify-between mb-3"><span className="section-title">Market Pulse</span></div>
         <div className="grid grid-cols-3 gap-2">
           {marketPulse.map((item) => (
             <div key={item.label} className="glass-card p-3 text-center">
               <p className="text-[10px] text-slate-500 mb-1">{item.label}</p>
               <p className="text-base font-bold font-mono text-slate-100">{item.value}</p>
-              <p className={`text-[10px] font-medium ${
-                item.color === 'emerald' ? 'text-emerald-400' :
-                item.color === 'warning' ? 'text-amber-400' : 'text-slate-400'
-              }`}>{item.sublabel}</p>
+              <p className={`text-[10px] font-medium ${item.color === 'emerald' ? 'text-emerald-400' : item.color === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>{item.sublabel}</p>
             </div>
           ))}
         </div>
@@ -241,32 +172,11 @@ export default function HomeScreen() {
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">BTC/USDT — 1H</span>
-          <button
-            onClick={() => {
-              const btcAsset = mockAssets.find(a => a.symbol === 'BTC');
-              if (btcAsset) navigateToAsset(btcAsset);
-            }}
-            className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1"
-          >
-            Open <ChevronRight size={12} />
-          </button>
+          <button onClick={() => { const a = mockAssets.find(x => x.symbol === 'BTC'); if (a) navigateToAsset(a); }} className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1">Open <ChevronRight size={12} /></button>
         </div>
         <div className="glass-card p-2 relative" style={{ minHeight: '180px' }}>
-          <div
-            ref={homeChartRef}
-            style={{ width: '100%', height: '180px', position: 'relative' }}
-          />
-          {chartError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg">
-              <p className="text-xs text-red-400">{chartError}</p>
-              <button
-                onClick={renderHomeChart}
-                className="mt-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs rounded-lg"
-              >
-                Retry
-              </button>
-            </div>
-          )}
+          <div ref={homeChartRef} style={{ width: '100%', height: '180px', position: 'relative' }} />
+          {chartError && <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg"><p className="text-xs text-red-400">{chartError}</p></div>}
         </div>
       </div>
 
@@ -274,17 +184,11 @@ export default function HomeScreen() {
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">Watchlist</span>
-          <button onClick={() => setActiveTab('markets')} className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1">
-            View All <ChevronRight size={12} />
-          </button>
+          <button onClick={() => setActiveTab('markets')} className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1">View All <ChevronRight size={12} /></button>
         </div>
         <div className="flex flex-col gap-2">
           {watchlistAssets.map((asset) => (
-            <button
-              key={asset.symbol}
-              onClick={() => navigateToAsset(asset)}
-              className="glass-card-hover p-3.5 flex items-center justify-between text-left"
-            >
+            <button key={asset.symbol} onClick={() => navigateToAsset(asset)} className="glass-card-hover p-3.5 flex items-center justify-between text-left">
               <div className="flex items-center gap-3">
                 <div>
                   <p className="text-sm font-bold">{asset.symbol}</p>
@@ -292,11 +196,7 @@ export default function HomeScreen() {
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm font-bold font-mono">
-                  {asset.symbol.includes('BTC') || asset.symbol === 'BTC'
-                    ? `$${asset.price?.toLocaleString() || asset.price}`
-                    : asset.price?.toFixed(4) || asset.price}
-                </p>
+                <p className="text-sm font-bold font-mono">{asset.symbol === 'BTC' ? `$${asset.price?.toLocaleString() || asset.price}` : asset.price?.toFixed(4) || asset.price}</p>
                 <PriceChange value={asset.change} pct={asset.changePct} />
               </div>
             </button>
@@ -304,44 +204,21 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Trending Today */}
+      {/* Trending */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">Trending Today</span>
-          {Object.keys(livePrices).length > 0 && (
-            <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live
-            </span>
-          )}
+          {Object.keys(livePrices).length > 0 && <span className="text-[10px] text-emerald-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Live</span>}
         </div>
         <div className="flex gap-2 overflow-x-auto scroll-hide pb-1">
           {liveTrending.gainers?.map((item) => (
-            <button
-              key={item.symbol}
-              onClick={() => {
-                const asset = mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 };
-                navigateToAsset(asset);
-              }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/8 border border-emerald-500/15 whitespace-nowrap hover:bg-emerald-500/12 transition-colors"
-            >
-              <span className="text-sm font-semibold">{item.symbol}</span>
-              <TrendingUp size={14} className="text-emerald-400" />
-              <span className="text-sm font-bold font-mono text-emerald-400">+{item.changePct?.toFixed(2)}%</span>
+            <button key={item.symbol} onClick={() => navigateToAsset(mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 })} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/8 border border-emerald-500/15 whitespace-nowrap hover:bg-emerald-500/12 transition-colors">
+              <span className="text-sm font-semibold">{item.symbol}</span><TrendingUp size={14} className="text-emerald-400" /><span className="text-sm font-bold font-mono text-emerald-400">+{item.changePct?.toFixed(2)}%</span>
             </button>
           ))}
           {liveTrending.losers?.map((item) => (
-            <button
-              key={item.symbol}
-              onClick={() => {
-                const asset = mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 };
-                navigateToAsset(asset);
-              }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/8 border border-red-500/15 whitespace-nowrap hover:bg-red-500/12 transition-colors"
-            >
-              <span className="text-sm font-semibold">{item.symbol}</span>
-              <TrendingDown size={14} className="text-red-400" />
-              <span className="text-sm font-bold font-mono text-red-400">{item.changePct?.toFixed(2)}%</span>
+            <button key={item.symbol} onClick={() => navigateToAsset(mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 })} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/8 border border-red-500/15 whitespace-nowrap hover:bg-red-500/12 transition-colors">
+              <span className="text-sm font-semibold">{item.symbol}</span><TrendingDown size={14} className="text-red-400" /><span className="text-sm font-bold font-mono text-red-400">{item.changePct?.toFixed(2)}%</span>
             </button>
           ))}
         </div>
@@ -349,26 +226,15 @@ export default function HomeScreen() {
 
       {/* News */}
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-3">
-          <span className="section-title">Latest News</span>
-          <span className="text-xs text-emerald-400 font-medium">View All</span>
-        </div>
+        <div className="flex items-center justify-between mb-3"><span className="section-title">Latest News</span><span className="text-xs text-emerald-400 font-medium">View All</span></div>
         <div className="flex flex-col gap-3">
-          {newsItems.slice(0, 3).map((news) => (
+          {newsItems.slice(0,3).map((news) => (
             <div key={news.id} className="glass-card p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs text-slate-500">{news.source}</span>
-                <span className="text-xs text-slate-600">&bull;</span>
-                <span className="text-xs text-slate-500">{news.time}</span>
-              </div>
+              <div className="flex items-center gap-2 mb-2"><span className="text-xs text-slate-500">{news.source}</span><span className="text-xs text-slate-600">&bull;</span><span className="text-xs text-slate-500">{news.time}</span></div>
               <p className="text-sm font-semibold leading-relaxed mb-3">{news.headline}</p>
               <div className="flex gap-2 flex-wrap">
-                {news.related.map(tag => (
-                  <span key={tag} className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-1 rounded-md border border-slate-700/30">{tag}</span>
-                ))}
-                <span className="text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded-md border border-emerald-500/15 flex items-center gap-1">
-                  <Sparkles size={10} /> AI Summary
-                </span>
+                {news.related.map(tag => <span key={tag} className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-1 rounded-md border border-slate-700/30">{tag}</span>)}
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded-md border border-emerald-500/15 flex items-center gap-1"><Sparkles size={10} /> AI Summary</span>
               </div>
             </div>
           ))}
@@ -377,22 +243,15 @@ export default function HomeScreen() {
 
       {/* Economic Calendar */}
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-3">
-          <span className="section-title">Economic Calendar</span>
-        </div>
+        <div className="flex items-center justify-between mb-3"><span className="section-title">Economic Calendar</span></div>
         <div className="flex flex-col gap-2">
-          {economicEvents.slice(0, 3).map((event, i) => (
+          {economicEvents.slice(0,3).map((event, i) => (
             <div key={i} className="glass-card p-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="text-xs text-slate-500 font-mono">{event.time}</span>
-                <div>
-                  <p className="text-xs font-semibold">{event.event}</p>
-                  <p className="text-[10px] text-slate-500">{event.country} &bull; Forecast: {event.forecast}</p>
-                </div>
+                <div><p className="text-xs font-semibold">{event.event}</p><p className="text-[10px] text-slate-500">{event.country} &bull; Forecast: {event.forecast}</p></div>
               </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase ${getImpactColor(event.impact)}`}>
-                {event.impact}
-              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase ${getImpactColor(event.impact)}`}>{event.impact}</span>
             </div>
           ))}
         </div>
@@ -400,26 +259,12 @@ export default function HomeScreen() {
 
       {/* Quick Actions */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <span className="section-title">Quick Actions</span>
-        </div>
+        <div className="flex items-center justify-between mb-3"><span className="section-title">Quick Actions</span></div>
         <div className="grid grid-cols-2 gap-2.5">
-          <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-colors group">
-            <Search size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-semibold text-slate-300">Analyze Asset</span>
-          </button>
-          <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-blue-500/30 transition-colors group">
-            <BarChart3 size={20} className="text-blue-400 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-semibold text-slate-300">Run Backtest</span>
-          </button>
-          <button onClick={() => setActiveTab('journal')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-violet-500/30 transition-colors group">
-            <BookOpen size={20} className="text-violet-400 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-semibold text-slate-300">Open Journal</span>
-          </button>
-          <button onClick={() => setActiveTab('alerts')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-amber-500/30 transition-colors group">
-            <Bell size={20} className="text-amber-400 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-semibold text-slate-300">Create Alert</span>
-          </button>
+          <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-colors group"><Search size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Analyze Asset</span></button>
+          <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-blue-500/30 transition-colors group"><BarChart3 size={20} className="text-blue-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Run Backtest</span></button>
+          <button onClick={() => setActiveTab('journal')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-violet-500/30 transition-colors group"><BookOpen size={20} className="text-violet-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Open Journal</span></button>
+          <button onClick={() => setActiveTab('alerts')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-amber-500/30 transition-colors group"><Bell size={20} className="text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Create Alert</span></button>
         </div>
       </div>
     </div>

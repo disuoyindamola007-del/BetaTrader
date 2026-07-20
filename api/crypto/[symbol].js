@@ -66,16 +66,13 @@ function normalizeStats(id, coin) {
   };
 }
 
-// ==================== HANDLER ====================
-
 export default async function handler(req, res) {
   const { symbol, interval = '1d', limit = '200', type = 'candles' } = req.query;
 
   try {
     if (type === 'quote' || symbol === 'all' || (symbol && symbol.includes(','))) {
-      // Batch quote: fetch all tracked coins at once
       const cacheKey = 'cg:batch:quote';
-      const cached = get(cacheKey, ttlFor('batch'));
+      const cached = await get(cacheKey, ttlFor('batch'));
 
       let data;
       if (cached) {
@@ -83,10 +80,9 @@ export default async function handler(req, res) {
       } else {
         const url = `${COINGECKO_BASE}/simple/price?ids=${ALL_IDS}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;
         data = await fetchCoinGecko(url);
-        set(cacheKey, data);
+        await set(cacheKey, data, ttlFor('batch'));
       }
 
-      // If batch request, return all mapped symbols
       if (symbol === 'all' || (symbol && symbol.includes(','))) {
         const requested = symbol === 'all'
           ? Object.keys(SYMBOL_TO_ID)
@@ -104,7 +100,6 @@ export default async function handler(req, res) {
         return res.status(200).json(result);
       }
 
-      // Single quote
       const id = getId(symbol);
       if (!id) return res.status(400).json({ error: `Unknown crypto symbol: ${symbol}` });
       if (!data[id]) return res.status(404).json({ error: `No data for ${symbol}` });
@@ -113,7 +108,6 @@ export default async function handler(req, res) {
       return res.status(200).json(normalizeStats(id, data[id]));
     }
 
-    // Candles (OHLC)
     const id = getId(symbol);
     if (!id) return res.status(400).json({ error: `Unknown crypto symbol: ${symbol}` });
 
@@ -126,7 +120,7 @@ export default async function handler(req, res) {
       : '365';
 
     const cacheKey = `cg:ohlc:${id}:${days}`;
-    const cached = get(cacheKey, ttlFor('candles', interval));
+    const cached = await get(cacheKey, ttlFor('candles', interval));
 
     let data;
     if (cached) {
@@ -134,17 +128,16 @@ export default async function handler(req, res) {
     } else {
       const url = `${COINGECKO_BASE}/coins/${id}/ohlc?vs_currency=usd&days=${days}`;
       data = await fetchCoinGecko(url);
-      set(cacheKey, data);
+      await set(cacheKey, data, ttlFor('candles', interval));
     }
 
-    // CoinGecko OHLC: [timestamp, open, high, low, close]
     const candles = data.map(([time, open, high, low, close]) => ({
       time: Math.floor(time / 1000),
       open,
       high,
       low,
       close,
-      volume: 0, // CoinGecko free OHLC doesn't include volume
+      volume: 0,
     }));
 
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');

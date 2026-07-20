@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     if (type === 'quote' || isBatch) {
       const symbolParam = symbols.join(',');
       const cacheKey = `td:quote:${cleanSymbols.sort().join(',')}`;
-      const cached = get(cacheKey, ttlFor('batch'));
+      const cached = await get(cacheKey, ttlFor('batch'));
 
       let data;
       if (cached) {
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
         if (!response.ok) throw new Error(`TwelveData quote fetch failed: ${response.status}`);
         data = await response.json();
         checkTdError(data);
-        set(cacheKey, data);
+        await set(cacheKey, data, ttlFor('batch'));
       }
 
       const parsed = parseTdQuote(data, symbols);
@@ -56,10 +56,9 @@ export default async function handler(req, res) {
       return res.status(200).json(parsed);
     }
 
-    // Candles
     const symbolParam = symbols[0];
     const cacheKey = `td:candles:${symbolParam.replace('/', '')}:${tdInterval}:${outputsize}`;
-    const cached = get(cacheKey, ttlFor('candles', interval));
+    const cached = await get(cacheKey, ttlFor('candles', interval));
 
     let data;
     if (cached) {
@@ -77,7 +76,7 @@ export default async function handler(req, res) {
       if (!response.ok) throw new Error(`TwelveData candles fetch failed: ${response.status}`);
       data = await response.json();
       checkTdError(data);
-      set(cacheKey, data);
+      await set(cacheKey, data, ttlFor('candles', interval));
     }
 
     const candles = (data.values || []).reverse().map(d => ({
