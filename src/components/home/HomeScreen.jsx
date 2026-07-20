@@ -9,7 +9,7 @@ import {
   mockAssets, marketPulse, watchlist, trending,
   newsItems, economicEvents, aiBriefing
 } from '../../data/mockData.js';
-import { fetchBinanceAllTickers, fetchCandles } from '../../services/api.js';
+import { fetchCryptoBatchQuotes, fetchCandles } from '../../services/api.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
@@ -47,9 +47,9 @@ export default function HomeScreen() {
   useEffect(() => {
     async function loadPrices() {
       setIsLoading(true);
-      const binanceData = await fetchBinanceAllTickers();
-      if (binanceData) {
-        setLivePrices(binanceData);
+      const cryptoData = await fetchCryptoBatchQuotes();
+      if (cryptoData && !cryptoData.error) {
+        setLivePrices(cryptoData);
         setLastUpdated(new Date());
       }
       setIsLoading(false);
