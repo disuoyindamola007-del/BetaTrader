@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { ArrowLeft, Heart, Share2, Bell, Sparkles, AlertTriangle, Clock } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Bell, Sparkles, AlertTriangle, Clock, RefreshCw } from 'lucide-react';
 import PriceChange from '../shared/PriceChange.jsx';
 import { useQuote, useCandles } from '../../hooks/useMarketData.js';
 import { calcEMA, calcRSI, calcBollinger } from '../../services/marketDataService.js';
@@ -83,6 +83,53 @@ export default function AssetDetail() {
 
   useEffect(() => { if (candles?.length) renderChart(candles); }, [candles, renderChart]);
   useEffect(() => () => { if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; } }, []);
+
+  // AI Analysis (Batch 4 — real Groq call, replaces static if/else text)
+  const [analysis, setAnalysis] = useState(null);
+  const [analyzeError, setAnalyzeError] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const analyzeRequestId = useRef(0);
+
+  // Reset stale analysis when the user navigates to a different asset
+  useEffect(() => { setAnalysis(null); setAnalyzeError(null); }, [symbol]);
+
+  const hasIndicators = indicators.rsi && indicators.rsi !== '--'
+    && indicators.ema9 != null && indicators.ema21 != null && indicators.ema50 != null;
+
+  const handleAnalyze = useCallback(async () => {
+    if (!symbol || !quote || !hasIndicators || isAnalyzing) return;
+
+    const requestId = ++analyzeRequestId.current;
+    setIsAnalyzing(true);
+    setAnalyzeError(null);
+
+    const params = new URLSearchParams({
+      price: String(quote.price),
+      changePct: String(quote.changePct ?? 0),
+      rsi: String(indicators.rsi),
+      ema9: String(indicators.ema9),
+      ema21: String(indicators.ema21),
+      ema50: String(indicators.ema50),
+    });
+
+    try {
+      const res = await fetch(`/api/analyze/${encodeURIComponent(symbol)}?${params}`);
+      const data = await res.json();
+      // Guard: ignore response if the user navigated to a different asset while this was in flight
+      if (analyzeRequestId.current !== requestId) return;
+
+      if (!res.ok) {
+        setAnalyzeError(data.rateLimited ? 'AI analysis is rate limited right now — try again in a minute.' : (data.error || 'Analysis failed'));
+        return;
+      }
+      setAnalysis(data.analysis);
+    } catch (err) {
+      if (analyzeRequestId.current !== requestId) return;
+      setAnalyzeError('Could not reach AI analysis service');
+    } finally {
+      if (analyzeRequestId.current === requestId) setIsAnalyzing(false);
+    }
+  }, [symbol, quote, hasIndicators, indicators, isAnalyzing]);
 
   if (!selectedAsset) return null;
 
@@ -178,20 +225,46 @@ export default function AssetDetail() {
           </div>
         </div>
 
-        {/* AI Analysis (static until Batch 4) */}
+        {/* AI Analysis */}
         <div className="mb-5 bg-gradient-to-br from-emerald-500/8 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-3"><Sparkles size={16} className="text-emerald-400" /><span className="text-[11px] font-bold tracking-wider text-emerald-400 uppercase">AI Analysis</span></div>
-          <p className="text-sm text-slate-300 leading-relaxed">
-            {(quote?.changePct || 0) > 2 ? `${selectedAsset.symbol} is showing strong bullish momentum. Consider waiting for a pullback.`
-             : (quote?.changePct || 0) < -2 ? `${selectedAsset.symbol} is in a downtrend. Watch for reversal signals.`
-             : `${selectedAsset.symbol} is consolidating. Patience is key.`}
-          </p>
+
+          {isAnalyzing && (
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              Analyzing {selectedAsset.symbol}...
+            </div>
+          )}
+
+          {!isAnalyzing && analyzeError && (
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={14} className="text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-sm text-amber-400">{analyzeError}</p>
+            </div>
+          )}
+
+          {!isAnalyzing && !analyzeError && analysis && (
+            <p className="text-sm text-slate-300 leading-relaxed">{analysis}</p>
+          )}
+
+          {!isAnalyzing && !analyzeError && !analysis && (
+            <p className="text-sm text-slate-500 leading-relaxed">
+              {hasIndicators ? 'Tap Analyze for an AI read on current conditions.' : 'Not enough price history yet to analyze this asset.'}
+            </p>
+          )}
         </div>
 
         {/* Actions */}
         <div className="flex gap-2">
           <button onClick={() => setActiveTab('alerts')} className="flex-1 btn-secondary"><Bell size={16} />Create Alert</button>
-          <button className="flex-1 btn-primary"><Sparkles size={16} />Analyze</button>
+          <button
+            onClick={handleAnalyze}
+            disabled={isAnalyzing || !hasIndicators || !quote}
+            className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isAnalyzing ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </button>
         </div>
       </div>
     </div>
