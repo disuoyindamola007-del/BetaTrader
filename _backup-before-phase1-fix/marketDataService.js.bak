@@ -319,13 +319,6 @@ export function calcEMA(data, period) {
 }
 
 export function calcRSI(data, period = 14) {
-  // Guard: not enough candles to compute a real RSI window.
-  // Return a neutral (50) value per candle instead of crashing on
-  // out-of-bounds access when data.length < period + 1.
-  if (!data || data.length < period + 1) {
-    return (data || []).map(() => 50);
-  }
-
   let gains = 0, losses = 0;
   for (let i = 1; i <= period; i++) {
     const change = data[i].close - data[i - 1].close;

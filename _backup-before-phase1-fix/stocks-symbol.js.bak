@@ -168,14 +168,7 @@ export default async function handler(req, res) {
       const fallbackSymbols = [];
 
       if (FINNHUB_API_KEY) {
-        // Once Finnhub rate-limits mid-batch, stop calling it for the rest
-        // of this batch and let every remaining symbol fall through to
-        // TwelveData/Alpha Vantage instead of aborting the whole request
-        // and losing symbols already fetched successfully.
-        let finnhubRateLimited = false;
         for (const sym of symbols) {
-          if (finnhubRateLimited) { fallbackSymbols.push(sym); continue; }
-
           const cacheKey = `fh:quote:${sym}`;
           const cached = get(cacheKey, ttlFor('quote'));
           let quote = null;
@@ -187,12 +180,7 @@ export default async function handler(req, res) {
               quote = normalizeFinnhubQuote(data);
               if (quote) set(cacheKey, quote, ttlFor('quote'));
             } catch (err) {
-              if (err.rateLimited) {
-                console.error(`Finnhub rate-limited mid-batch — falling back remaining symbols to TwelveData/Alpha Vantage`);
-                finnhubRateLimited = true;
-                fallbackSymbols.push(sym);
-                continue;
-              }
+              if (err.rateLimited) throw err;
               console.error(`Finnhub quote failed for ${sym}:`, err.message);
             }
           }
@@ -220,8 +208,7 @@ export default async function handler(req, res) {
             }
           }
         } catch (err) {
-          // Don't abort — whatever Finnhub already found stays in `result`,
-          // and anything still missing falls through to Alpha Vantage below.
+          if (err.rateLimited) throw err;
           console.error('TwelveData fallback quote failed:', err.message);
         }
       }
@@ -282,7 +269,7 @@ export default async function handler(req, res) {
               set(cacheKey, candles, ttlFor('candles', interval));
             }
           } catch (err) {
-            // Don't abort — fall through to TwelveData/Alpha Vantage below.
+            if (err.rateLimited) throw err;
             console.error('Finnhub candles failed:', err.message);
           }
         }
@@ -302,7 +289,7 @@ export default async function handler(req, res) {
           return res.status(200).json(candles);
         }
       } catch (err) {
-        // Don't abort — fall through to Alpha Vantage below.
+        if (err.rateLimited) throw err;
         console.error('TwelveData candles fallback failed:', err.message);
       }
     }

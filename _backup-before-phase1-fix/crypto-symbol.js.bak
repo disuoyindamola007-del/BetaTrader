@@ -131,11 +131,6 @@ export default async function handler(req, res) {
       await set(cacheKey, data, ttlFor('candles', interval));
     }
 
-    if (!Array.isArray(data)) {
-      console.error('Unexpected CoinGecko OHLC response shape:', JSON.stringify(data).slice(0, 200));
-      return res.status(503).json({ error: 'Unexpected response from CoinGecko' });
-    }
-
     const candles = data.map(([time, open, high, low, close]) => ({
       time: Math.floor(time / 1000),
       open,
