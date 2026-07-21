@@ -50,8 +50,10 @@ export default function AlertsScreen() {
     setShowForm(false);
   };
 
-  const handleDelete = (id) => {
-    const updated = deleteAlert(id);
+  const handleDelete = (alert) => {
+    const confirmed = window.confirm(`Delete the alert for ${alert.asset} (Price ${alert.condition} ${alert.value})?`);
+    if (!confirmed) return;
+    const updated = deleteAlert(alert.id);
     setAlerts(updated);
   };
 
@@ -133,7 +135,7 @@ export default function AlertsScreen() {
                 <Bell size={16} className={alert.status === 'triggered' ? 'text-amber-400' : 'text-emerald-400'} />
                 <span className="text-sm font-bold">{alert.asset}</span>
               </div>
-              <button onClick={() => handleDelete(alert.id)} className="text-slate-600 hover:text-red-400 transition-colors">
+              <button onClick={() => handleDelete(alert)} className="text-slate-600 hover:text-red-400 transition-colors">
                 <Trash2 size={14} />
               </button>
             </div>
