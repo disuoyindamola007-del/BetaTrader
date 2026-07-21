@@ -10,3 +10,5 @@ phase1-critical-fixes/
 phase1-critical-fixes.zip
 apply-phase1-fixes.sh
 _backup-before-*/
+dist/
+*.zip
