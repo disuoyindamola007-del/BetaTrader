@@ -6,3 +6,7 @@ _backup-before-kimi-merge/
 market-data-fix/
 apply-fix.sh
 market-data-fix.zip
+phase1-critical-fixes/
+phase1-critical-fixes.zip
+apply-phase1-fixes.sh
+_backup-before-*/
