@@ -80,10 +80,10 @@ export function useQuote(symbol, enabled = true) {
     return () => clearInterval(intervalRef.current);
   }, [symbol, enabled, load]);
 
-  return { data, error, isLoading, isStale };
-}
+  const refetch = useCallback(() => load(false), [load]);
 
-// ==================== useCandles ====================
+  return { data, error, isLoading, isStale, refetch };
+}
 
 export function useCandles(symbol, interval, options = {}) {
   const { enabled = true, limit = 200 } = options;
@@ -119,10 +119,10 @@ export function useCandles(symbol, interval, options = {}) {
     return () => clearInterval(intervalRef.current);
   }, [symbol, interval, limit, enabled, load]);
 
-  return { data, error, isLoading };
-}
+  const refetch = useCallback(() => load(false), [load]);
 
-// ==================== useBatchQuotes ====================
+  return { data, error, isLoading, refetch };
+}
 
 export function useBatchQuotes(symbols, enabled = true) {
   const [data, setData] = useState({});

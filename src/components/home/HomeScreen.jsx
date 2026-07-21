@@ -9,7 +9,7 @@ import {
   mockAssets, marketPulse, watchlist, trending,
   newsItems, economicEvents, aiBriefing
 } from '../../data/mockData.js';
-import { useMarketData, useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarketData.js';
+import { useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { getCategory } from '../../services/marketDataService.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
@@ -21,6 +21,7 @@ export default function HomeScreen() {
   const [session, setSession] = useState('');
   const homeChartRef = useRef(null);
   const homeChartInstance = useRef(null);
+  const homeChartObserver = useRef(null);
 
   // Time/session
   useEffect(() => {
@@ -81,17 +82,22 @@ export default function HomeScreen() {
       candleSeries.setData(candles);
       chart.timeScale().fitContent();
       homeChartInstance.current = chart;
+      if (homeChartObserver.current) { homeChartObserver.current.disconnect(); homeChartObserver.current = null; }
       const ro = new ResizeObserver(() => {
         if (homeChartInstance.current && homeChartRef.current) {
           homeChartInstance.current.applyOptions({ width: homeChartRef.current.clientWidth, height: 180 });
         }
       });
       ro.observe(homeChartRef.current);
+      homeChartObserver.current = ro;
     } catch (err) { console.error('Home chart error:', err); }
   }, []);
 
   useEffect(() => { if (btcCandles?.length) renderHomeChart(btcCandles); }, [btcCandles, renderHomeChart]);
-  useEffect(() => () => { if (homeChartInstance.current) { homeChartInstance.current.remove(); homeChartInstance.current = null; } }, []);
+  useEffect(() => () => {
+    if (homeChartObserver.current) { homeChartObserver.current.disconnect(); homeChartObserver.current = null; }
+    if (homeChartInstance.current) { homeChartInstance.current.remove(); homeChartInstance.current = null; }
+  }, []);
 
   const getAssetData = (symbol) => {
     const mock = mockAssets.find(a => a.symbol === symbol);

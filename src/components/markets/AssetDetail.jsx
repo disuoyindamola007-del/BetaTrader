@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { ArrowLeft, Heart, Share2, Bell, Sparkles, AlertTriangle, Clock, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Bell, Sparkles, AlertTriangle, Clock, RefreshCw, Check } from 'lucide-react';
 import PriceChange from '../shared/PriceChange.jsx';
 import { useQuote, useCandles } from '../../hooks/useMarketData.js';
 import { calcEMA, calcRSI, calcBollinger } from '../../services/marketDataService.js';
@@ -8,18 +8,25 @@ import { calcEMA, calcRSI, calcBollinger } from '../../services/marketDataServic
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
 
 export default function AssetDetail() {
-  const { selectedAsset, goBack, setActiveTab } = useApp();
+  const { selectedAsset, goBack, setActiveTab, isFavorite, toggleFavorite } = useApp();
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
+  const chartObserverRef = useRef(null);
   const [timeframe, setTimeframe] = useState('1h');
+  const [shareState, setShareState] = useState('idle'); // 'idle' | 'copied'
 
   const symbol = selectedAsset?.symbol;
 
   // Stale-while-revalidate: useQuote displays cached data immediately.
   // If the cached quote is fresh (within TTL), no network request is made.
   // If expired, the old value displays while a fresh quote is fetched in background.
-  const { data: quote, error: quoteError, isLoading: quoteLoading, isStale } = useQuote(symbol, !!symbol);
-  const { data: candles, error: candleError, isLoading: candleLoading } = useCandles(symbol, timeframe, { enabled: !!symbol, limit: 200 });
+  const { data: quote, error: quoteError, isLoading: quoteLoading, isStale, refetch: refetchQuote } = useQuote(symbol, !!symbol);
+  const { data: candles, error: candleError, isLoading: candleLoading, refetch: refetchCandles } = useCandles(symbol, timeframe, { enabled: !!symbol, limit: 200 });
+
+  const handleRetry = useCallback(() => {
+    refetchQuote();
+    refetchCandles();
+  }, [refetchQuote, refetchCandles]);
 
   const isLoading = quoteLoading || candleLoading;
   const chartError = quoteError || candleError;
@@ -76,13 +83,18 @@ export default function AssetDetail() {
 
       chart.timeScale().fitContent();
       chartRef.current = chart;
+      if (chartObserverRef.current) { chartObserverRef.current.disconnect(); chartObserverRef.current = null; }
       const ro = new ResizeObserver(() => { if (chartRef.current && chartContainerRef.current) chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth, height: 360 }); });
       ro.observe(chartContainerRef.current);
+      chartObserverRef.current = ro;
     } catch (err) { console.error('Chart render error:', err); }
   }, []);
 
   useEffect(() => { if (candles?.length) renderChart(candles); }, [candles, renderChart]);
-  useEffect(() => () => { if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; } }, []);
+  useEffect(() => () => {
+    if (chartObserverRef.current) { chartObserverRef.current.disconnect(); chartObserverRef.current = null; }
+    if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
+  }, []);
 
   // AI Analysis (Batch 4 — real Groq call, replaces static if/else text)
   const [analysis, setAnalysis] = useState(null);
@@ -131,6 +143,32 @@ export default function AssetDetail() {
     }
   }, [symbol, quote, hasIndicators, indicators, isAnalyzing]);
 
+  const handleShare = useCallback(async () => {
+    const priceText = quote?.price != null ? ` — currently $${quote.price}` : '';
+    const shareData = {
+      title: `${selectedAsset.symbol} on BetaTrader`,
+      text: `Check out ${selectedAsset.symbol}${priceText}`,
+      url: typeof window !== 'undefined' ? window.location.href : undefined,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        // AbortError just means the user cancelled the native share sheet — not a real failure
+        if (err.name !== 'AbortError') console.error('Share failed:', err.message);
+      }
+      return;
+    }
+    // Fallback for browsers without the Web Share API (most desktop browsers)
+    try {
+      await navigator.clipboard.writeText(`${shareData.text} — ${shareData.url}`);
+      setShareState('copied');
+      setTimeout(() => setShareState('idle'), 2000);
+    } catch (err) {
+      console.error('Clipboard copy failed:', err.message);
+    }
+  }, [selectedAsset, quote]);
+
   if (!selectedAsset) return null;
 
   const formatPrice = (price) => {
@@ -157,8 +195,15 @@ export default function AssetDetail() {
           <button onClick={goBack} className="w-9 h-9 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors"><ArrowLeft size={18} /></button>
           <div className="text-center"><p className="text-sm font-bold">{selectedAsset.symbol}</p><p className="text-[10px] text-slate-500">{selectedAsset.name}</p></div>
           <div className="flex gap-2">
-            <button className="w-9 h-9 glass-card flex items-center justify-center text-slate-400 hover:text-red-400 transition-colors"><Heart size={16} /></button>
-            <button className="w-9 h-9 glass-card flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors"><Share2 size={16} /></button>
+            <button
+              onClick={() => toggleFavorite(selectedAsset.symbol)}
+              className={`w-9 h-9 glass-card flex items-center justify-center transition-colors ${isFavorite(selectedAsset.symbol) ? 'text-red-400' : 'text-slate-400 hover:text-red-400'}`}
+            >
+              <Heart size={16} fill={isFavorite(selectedAsset.symbol) ? 'currentColor' : 'none'} />
+            </button>
+            <button onClick={handleShare} className="w-9 h-9 glass-card flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors">
+              {shareState === 'copied' ? <Check size={16} className="text-emerald-400" /> : <Share2 size={16} />}
+            </button>
           </div>
         </div>
       </div>
@@ -199,7 +244,7 @@ export default function AssetDetail() {
                   <p className="text-xs text-slate-500 text-center">{chartError}</p>
                 </>
               )}
-              <button className="mt-3 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-lg border border-emerald-500/30">Retry</button>
+              <button onClick={handleRetry} className="mt-3 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-lg border border-emerald-500/30">Retry</button>
             </div>
           )}
         </div>

@@ -97,42 +97,6 @@ export const aiBriefing = {
   },
 };
 
-export const assetDetails = {
-  'EUR/USD': {
-    price: 1.08542,
-    change: 0.12,
-    changePct: 0.11,
-    high24: 1.0875,
-    low24: 1.0821,
-    volume: '89.2B',
-    trend: 'CONSOLIDATING',
-    rsi: 52,
-    rsiSignal: 'Neutral',
-    macd: { line: -0.0001, signal: -0.0000, hist: -0.0000 },
-    bollinger: { lower: 1.1432, middle: 1.1439, upper: 1.1445 },
-    support: 1.1407,
-    resistance: 1.1482,
-    technicalSignal: 'STAY OUT — Market consolidating or lack of trend alignment',
-    signalType: 'neutral',
-  },
-};
-
-export const backtestResults = {
-  status: 'mixed',
-  statusLabel: 'MIXED RESULTS',
-  statusDesc: 'Win rate between 45-60% or inconsistent R:R. Trade with caution.',
-  dataRange: '2008-08-08 → 2026-06-25',
-  totalSetups: 250,
-  winRate: 47.6,
-  avgFavorable: 169.8,
-  avgAdverse: -196.4,
-  bestCase: 905,
-  worstCase: -897,
-  avgRR: '1:0.86',
-  wins: 119,
-  losses: 131,
-};
-
 export const journalTrades = [
   {
     id: 1,

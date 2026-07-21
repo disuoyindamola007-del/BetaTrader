@@ -1,8 +1,9 @@
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 export default function PriceChange({ value, pct, size = 'sm' }) {
-  const isPositive = pct > 0;
-  const isNeutral = pct === 0 || pct === undefined || pct === null;
+  const hasValidPct = pct !== undefined && pct !== null && !Number.isNaN(pct);
+  const isPositive = hasValidPct && pct > 0;
+  const isNeutral = !hasValidPct || pct === 0;
 
   const sizeClasses = {
     sm: 'text-xs',
@@ -11,7 +12,7 @@ export default function PriceChange({ value, pct, size = 'sm' }) {
   };
 
   // Format percentage to exactly 2 decimal places
-  const formattedPct = pct !== undefined && pct !== null
+  const formattedPct = hasValidPct
     ? `${isPositive ? '+' : ''}${pct.toFixed(2)}%`
     : '--';
 
