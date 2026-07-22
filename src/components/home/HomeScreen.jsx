@@ -23,7 +23,6 @@ export default function HomeScreen() {
   const homeChartInstance = useRef(null);
   const homeChartObserver = useRef(null);
 
-  // Time/session
   useEffect(() => {
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good Morning');
@@ -43,12 +42,14 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Data via centralized hooks
   const { data: cryptoData, isLoading: cryptoLoading, isStale: cryptoStale } = useCryptoBatch(true);
   const { data: btcCandles, error: chartError } = useCandles('BTC', '1h', { enabled: true, limit: 100 });
 
+  // FIX: watchlist entries are already symbol strings (e.g. 'EUR/USD', 'BTC'),
+  // not objects — the old `.map(w => w.symbol)` produced `undefined` for every
+  // entry, which caused malformed batch requests like /api/stocks/,,,,, 
   const watchlistSymbols = useMemo(() =>
-    watchlist.map(w => w.symbol).filter(s => getCategory(s) !== 'crypto'),
+    watchlist.filter(s => getCategory(s) !== 'crypto'),
   []);
   const { data: watchlistQuotes, isLoading: wlLoading, isStale: wlStale } = useBatchQuotes(watchlistSymbols, watchlistSymbols.length > 0);
 
@@ -56,7 +57,6 @@ export default function HomeScreen() {
   const isLoading = cryptoLoading || wlLoading;
   const isStale = cryptoStale || wlStale;
 
-  // Home chart
   const renderHomeChart = useCallback(async (candles) => {
     if (!homeChartRef.current || !candles?.length) return;
     try {
@@ -140,7 +140,6 @@ export default function HomeScreen() {
         <p className="text-xs text-slate-500">{session} &bull; {currentTime} UTC</p>
       </div>
 
-      {/* AI Briefing */}
       <div className="mb-5 bg-gradient-to-br from-emerald-500/8 via-emerald-500/4 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4 glow-emerald">
         <div className="flex items-center gap-2 mb-3">
           <span className="text-lg">🤖</span>
@@ -160,7 +159,6 @@ export default function HomeScreen() {
         </button>
       </div>
 
-      {/* Market Pulse */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3"><span className="section-title">Market Pulse</span></div>
         <div className="grid grid-cols-3 gap-2">
@@ -174,7 +172,6 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Live Chart Preview */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">BTC/USDT — 1H</span>
@@ -186,7 +183,6 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Watchlist */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">Watchlist</span>
@@ -210,7 +206,6 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Trending */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">Trending Today</span>
@@ -230,7 +225,6 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* News */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3"><span className="section-title">Latest News</span><span className="text-xs text-emerald-400 font-medium">View All</span></div>
         <div className="flex flex-col gap-3">
@@ -247,23 +241,15 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Economic Calendar */}
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3"><span className="section-title">Economic Calendar</span></div>
-        <div className="flex flex-col gap-2">
-          {economicEvents.slice(0,3).map((event, i) => (
-            <div key={i} className="glass-card p-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-500 font-mono">{event.time}</span>
-                <div><p className="text-xs font-semibold">{event.event}</p><p className="text-[10px] text-slate-500">{event.country} &bull; Forecast: {event.forecast}</p></div>
-              </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase ${getImpactColor(event.impact)}`}>{event.impact}</span>
-            </div>
-          ))}
+        <div className="glass-card p-6 flex flex-col items-center text-center gap-2">
+          <Clock size={20} className="text-slate-500" />
+          <p className="text-sm font-semibold text-slate-300">Coming Soon</p>
+          <p className="text-[11px] text-slate-500">Live economic events will appear here shortly.</p>
         </div>
       </div>
 
-      {/* Quick Actions */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3"><span className="section-title">Quick Actions</span></div>
         <div className="grid grid-cols-2 gap-2.5">
