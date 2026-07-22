@@ -27,7 +27,6 @@ function dedupe(key, fn) {
 }
 
 // ==================== TEMPORARY DIAGNOSTICS ====================
-// These counters are for verification only. Remove after confirming optimizations.
 const DIAGNOSTICS = {
   totalRequests: 0,
   cacheHits: 0,
@@ -89,7 +88,6 @@ function getRoute(category) {
 }
 
 // ==================== REFRESH INTERVALS ====================
-// Aligned with cache TTL so data never expires before the next refresh
 
 const REFRESH_INTERVALS = {
   crypto: 60_000,
@@ -132,40 +130,37 @@ async function fetchJson(url, endpointLabel = 'unknown') {
 }
 
 // ==================== UNIFIED CACHE HELPERS ====================
-// Batch and single quotes share the same per-symbol cache entries.
-// This ensures AssetDetail reuses data fetched by MarketsScreen.
 
 function getQuoteCacheKey(symbol) {
   const category = getCategory(symbol);
   return `quote:${category}:${symbol}`;
 }
 
-function setUnifiedQuoteCache(symbol, quoteData) {
+async function setUnifiedQuoteCache(symbol, quoteData) {
   const key = getQuoteCacheKey(symbol);
-  set(key, quoteData, ttlFor('quote'));
+  await set(key, quoteData, ttlFor('quote'));
 }
 
-function getUnifiedQuoteCache(symbol) {
+async function getUnifiedQuoteCache(symbol) {
   const key = getQuoteCacheKey(symbol);
-  const cached = get(key, ttlFor('quote'));
+  const cached = await get(key, ttlFor('quote'));
   if (cached) diagCacheHit();
   else diagCacheMiss();
   return cached;
 }
 
 // Peek at quote without triggering diagnostics — used by hooks for SWR check
-export function peekQuote(symbol) {
+export async function peekQuote(symbol) {
   const key = getQuoteCacheKey(symbol);
-  const cached = get(key, ttlFor('quote'));
-  // Check if truly fresh by trying with 0 TTL — if get returns null, it expired
-  const isFresh = get(key, 0) !== null;
+  const cached = await get(key, ttlFor('quote'));
+  const isFresh = (await get(key, 0)) !== null;
   return { cached, isFresh };
 }
 
 // ==================== QUOTES ====================
 
 export async function fetchQuote(symbol) {
-  const cached = getUnifiedQuoteCache(symbol);
+  const cached = await getUnifiedQuoteCache(symbol);
   if (cached) return cached;
 
   const category = getCategory(symbol);
@@ -176,7 +171,7 @@ export async function fetchQuote(symbol) {
   );
 
   const quote = data[symbol] || data[symbol.replace('/', '')] || data;
-  setUnifiedQuoteCache(symbol, quote);
+  await setUnifiedQuoteCache(symbol, quote);
   return quote;
 }
 
@@ -188,14 +183,13 @@ export async function fetchBatchQuotes(symbolsByCategory) {
     if (!symbols?.length) continue;
 
     const batchCacheKey = `batch:${category}:${symbols.sort().join(',')}`;
-    const batchCached = get(batchCacheKey, ttlFor('batch'));
+    const batchCached = await get(batchCacheKey, ttlFor('batch'));
 
     if (batchCached) {
-      // Batch cache hit — also populate per-symbol cache so AssetDetail can reuse
       for (const sym of symbols) {
         const perSym = batchCached[sym] || batchCached[sym.replace('/', '')];
         if (perSym) {
-          setUnifiedQuoteCache(sym, perSym);
+          await setUnifiedQuoteCache(sym, perSym);
           results[sym] = perSym;
         }
       }
@@ -209,15 +203,14 @@ export async function fetchBatchQuotes(symbolsByCategory) {
         fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbols.join(','))}?type=quote`, 'batch')
       );
 
-      // Store per-symbol AND batch cache
       for (const sym of symbols) {
         const perSym = data[sym] || data[sym.replace('/', '')];
         if (perSym) {
-          setUnifiedQuoteCache(sym, perSym);
+          await setUnifiedQuoteCache(sym, perSym);
           results[sym] = perSym;
         }
       }
-      set(batchCacheKey, data, ttlFor('batch'));
+      await set(batchCacheKey, data, ttlFor('batch'));
     } catch (err) {
       console.error(`[MarketDataService] Batch ${category} failed:`, err.message);
       if (err.rateLimited || err.isCooldown) {
@@ -237,7 +230,7 @@ export async function fetchCandles(symbol, interval = '1h', limit = 200) {
   const category = getCategory(symbol);
   const cacheKey = `candles:${category}:${symbol}:${interval}:${limit}`;
 
-  const cached = get(cacheKey, ttlFor('candles', interval));
+  const cached = await get(cacheKey, ttlFor('candles', interval));
   if (cached) {
     diagCacheHit();
     return cached;
@@ -249,7 +242,7 @@ export async function fetchCandles(symbol, interval = '1h', limit = 200) {
     fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?interval=${interval}&limit=${limit}&type=candles`, `candles:${interval}`)
   );
 
-  set(cacheKey, data, ttlFor('candles', interval));
+  await set(cacheKey, data, ttlFor('candles', interval));
   return data;
 }
 
@@ -258,7 +251,7 @@ export async function fetchCandles(symbol, interval = '1h', limit = 200) {
 export async function fetchCryptoBatch() {
   const cacheKey = 'crypto:batch:all';
 
-  const cached = get(cacheKey, ttlFor('batch'));
+  const cached = await get(cacheKey, ttlFor('batch'));
   if (cached) {
     diagCacheHit();
     return { data: cached, stale: false };
@@ -269,13 +262,12 @@ export async function fetchCryptoBatch() {
     const data = await dedupe(cacheKey, () =>
       fetchJson(`${API_BASE}/api/crypto/all?type=quote`, 'crypto-batch')
     );
-    // Also populate per-symbol quote cache
     for (const [sym, quote] of Object.entries(data)) {
       if (quote && quote.price != null) {
-        setUnifiedQuoteCache(sym, quote);
+        await setUnifiedQuoteCache(sym, quote);
       }
     }
-    set(cacheKey, data, ttlFor('batch'));
+    await set(cacheKey, data, ttlFor('batch'));
     return { data, stale: false };
   } catch (err) {
     console.error('[MarketDataService] Crypto batch failed:', err.message);
@@ -319,9 +311,6 @@ export function calcEMA(data, period) {
 }
 
 export function calcRSI(data, period = 14) {
-  // Guard: not enough candles to compute a real RSI window.
-  // Return a neutral (50) value per candle instead of crashing on
-  // out-of-bounds access when data.length < period + 1.
   if (!data || data.length < period + 1) {
     return (data || []).map(() => 50);
   }

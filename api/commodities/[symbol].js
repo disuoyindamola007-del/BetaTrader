@@ -66,7 +66,6 @@ export default async function handler(req, res) {
       const parsed = parseTdQuote(data, mappedSymbols);
       const result = {};
 
-      // ALSO store per-symbol quote cache so AssetDetail can reuse
       for (let i = 0; i < symbols.length; i++) {
         const mapped = mappedSymbols[i];
         if (parsed[mapped]) {

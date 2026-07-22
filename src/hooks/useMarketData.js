@@ -31,11 +31,10 @@ export function useQuote(symbol, enabled = true) {
   const load = useCallback(async (isBackground = false) => {
     if (!symbol || !enabled) return;
 
-    // Guard: capture the symbol at call time so we can reject stale responses
     const callSymbol = symbol;
     currentSymbolRef.current = callSymbol;
 
-    const { cached, isFresh } = peekQuote(callSymbol);
+    const { cached, isFresh } = await peekQuote(callSymbol);
 
     if (cached) {
       setData(cached);
@@ -46,18 +45,15 @@ export function useQuote(symbol, enabled = true) {
       if (!isBackground) setIsLoading(true);
       try {
         const quote = await fetchQuote(callSymbol);
-        // Guard: ignore response if symbol changed while request was in flight
         if (currentSymbolRef.current !== callSymbol) return;
         setData(quote);
         setError(null);
         setIsStale(false);
       } catch (err) {
-        // Guard: ignore error if symbol changed while request was in flight
         if (currentSymbolRef.current !== callSymbol) return;
         setError(err.message);
         if (err.rateLimited || err.isCooldown) setIsStale(true);
       } finally {
-        // Guard: only clear loading if this is still the current symbol
         if (currentSymbolRef.current === callSymbol && !isBackground) {
           setIsLoading(false);
         }
@@ -211,5 +207,3 @@ export function useCryptoBatch(enabled = true) {
 
   return { data, error, isLoading, isStale };
 }
-
-export { getCategory };

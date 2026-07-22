@@ -47,11 +47,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing or invalid indicator data — insufficient candle history for this asset yet' });
   }
 
-  // Round for cache-key purposes so minor quote refreshes (e.g. changePct
-  // moving from 1.21% to 1.24%) still hit cache instead of re-billing Groq.
   const cacheKey = `analyze:${symbol}:${round(parsed.changePct, 1)}:${Math.round(parsed.rsi)}:${parsed.ema9 > parsed.ema21}:${parsed.ema21 > parsed.ema50}`;
 
-  const cached = get(cacheKey, ANALYSIS_TTL_MS);
+  const cached = await get(cacheKey, ANALYSIS_TTL_MS);
   if (cached) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ analysis: cached, cached: true });
@@ -104,7 +102,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'AI analysis returned an empty response' });
     }
 
-    set(cacheKey, analysis, ANALYSIS_TTL_MS);
+    await set(cacheKey, analysis, ANALYSIS_TTL_MS);
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ analysis, cached: false });
 

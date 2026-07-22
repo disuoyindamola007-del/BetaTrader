@@ -63,7 +63,7 @@ function normalizeFinnhubCandles(data) {
 
 async function fetchTwelveDataQuote(symbolParam, apiKey) {
   const cacheKey = `td:quote:stocks:${symbolParam}`;
-  const cached = get(cacheKey, ttlFor('batch'));
+  const cached = await get(cacheKey, ttlFor('batch'));
   if (cached) return cached;
   const response = await fetch(`${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${apiKey}`);
   if (response.status === 429) {
@@ -75,14 +75,14 @@ async function fetchTwelveDataQuote(symbolParam, apiKey) {
   if (!response.ok) throw new Error(`TwelveData quote fetch failed: ${response.status}`);
   const data = await response.json();
   checkTdError(data);
-  set(cacheKey, data, ttlFor('batch'));
+  await set(cacheKey, data, ttlFor('batch'));
   return data;
 }
 
 async function fetchTwelveDataCandles(symbol, interval, outputsize, apiKey) {
   const tdInterval = twelveDataIntervalMap[interval] || '1day';
   const cacheKey = `td:candles:stocks:${symbol.replace('/', '')}:${tdInterval}:${outputsize}`;
-  const cached = get(cacheKey, ttlFor('candles', interval));
+  const cached = await get(cacheKey, ttlFor('candles', interval));
   if (cached) return cached;
   const response = await fetch(`${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${apiKey}`);
   if (response.status === 429) {
@@ -94,7 +94,7 @@ async function fetchTwelveDataCandles(symbol, interval, outputsize, apiKey) {
   if (!response.ok) throw new Error(`TwelveData candles fetch failed: ${response.status}`);
   const data = await response.json();
   checkTdError(data);
-  set(cacheKey, data, ttlFor('candles', interval));
+  await set(cacheKey, data, ttlFor('candles', interval));
   return data;
 }
 
@@ -111,12 +111,12 @@ function normalizeTwelveDataCandles(data) {
 
 async function fetchAlphaVantageQuote(symbol, apiKey) {
   const cacheKey = `av:quote:${symbol}`;
-  const cached = get(cacheKey, ttlFor('quote'));
+  const cached = await get(cacheKey, ttlFor('quote'));
   if (cached) return cached;
   const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`);
   if (!response.ok) throw new Error(`Alpha Vantage quote failed: ${response.status}`);
   const data = await response.json();
-  set(cacheKey, data, ttlFor('quote'));
+  await set(cacheKey, data, ttlFor('quote'));
   return data;
 }
 
@@ -124,12 +124,12 @@ async function fetchAlphaVantageCandles(symbol, interval, apiKey) {
   const avInterval = interval === '1d' ? 'TIME_SERIES_DAILY' : 'TIME_SERIES_INTRADAY';
   const avIntervalParam = interval === '1d' ? '' : `&interval=${interval}`;
   const cacheKey = `av:candles:${symbol}:${interval}`;
-  const cached = get(cacheKey, ttlFor('candles', interval));
+  const cached = await get(cacheKey, ttlFor('candles', interval));
   if (cached) return cached;
   const response = await fetch(`https://www.alphavantage.co/query?function=${avInterval}${avIntervalParam}&symbol=${symbol}&apikey=${apiKey}&outputsize=full`);
   if (!response.ok) throw new Error(`Alpha Vantage candles failed: ${response.status}`);
   const data = await response.json();
-  set(cacheKey, data, ttlFor('candles', interval));
+  await set(cacheKey, data, ttlFor('candles', interval));
   return data;
 }
 
@@ -168,16 +168,13 @@ export default async function handler(req, res) {
       const fallbackSymbols = [];
 
       if (FINNHUB_API_KEY) {
-        // Once Finnhub rate-limits mid-batch, stop calling it for the rest
-        // of this batch and let every remaining symbol fall through to
-        // TwelveData/Alpha Vantage instead of aborting the whole request
-        // and losing symbols already fetched successfully.
         let finnhubRateLimited = false;
         for (const sym of symbols) {
           if (finnhubRateLimited) { fallbackSymbols.push(sym); continue; }
 
           const cacheKey = `fh:quote:${sym}`;
-          const cached = get(cacheKey, ttlFor('quote'));
+          const cached = await get(cacheKey, ttlFor('quote'));
+
           let quote = null;
           if (cached) {
             quote = cached;
@@ -185,7 +182,7 @@ export default async function handler(req, res) {
             try {
               const data = await fetchFinnhub(`${FINNHUB_BASE}/quote?symbol=${sym}&token=${FINNHUB_API_KEY}`);
               quote = normalizeFinnhubQuote(data);
-              if (quote) set(cacheKey, quote, ttlFor('quote'));
+              if (quote) await set(cacheKey, quote, ttlFor('quote'));
             } catch (err) {
               if (err.rateLimited) {
                 console.error(`Finnhub rate-limited mid-batch — falling back remaining symbols to TwelveData/Alpha Vantage`);
@@ -198,7 +195,6 @@ export default async function handler(req, res) {
           }
           if (quote) {
             result[sym] = quote;
-            // Store per-symbol quote cache for AssetDetail reuse
             await set(`quote:stocks:${sym}`, quote, ttlFor('quote'));
           }
           else fallbackSymbols.push(sym);
@@ -215,13 +211,10 @@ export default async function handler(req, res) {
           for (const sym of fallbackSymbols) {
             if (parsed[sym] && !result[sym]) {
               result[sym] = parsed[sym];
-              // Store per-symbol quote cache for AssetDetail reuse
               await set(`quote:stocks:${sym}`, parsed[sym], ttlFor('quote'));
             }
           }
         } catch (err) {
-          // Don't abort — whatever Finnhub already found stays in `result`,
-          // and anything still missing falls through to Alpha Vantage below.
           console.error('TwelveData fallback quote failed:', err.message);
         }
       }
@@ -265,7 +258,7 @@ export default async function handler(req, res) {
       const resolution = finnhubResolutionMap[interval];
       if (resolution) {
         const cacheKey = `fh:candles:${targetSymbol}:${resolution}:${outputsize}`;
-        const cached = get(cacheKey, ttlFor('candles', interval));
+        const cached = await get(cacheKey, ttlFor('candles', interval));
         let candles = null;
         if (cached) {
           candles = cached;
@@ -279,10 +272,9 @@ export default async function handler(req, res) {
             candles = normalizeFinnhubCandles(data);
             if (candles) {
               if (candles.length > outputsize) candles = candles.slice(candles.length - outputsize);
-              set(cacheKey, candles, ttlFor('candles', interval));
+              await set(cacheKey, candles, ttlFor('candles', interval));
             }
           } catch (err) {
-            // Don't abort — fall through to TwelveData/Alpha Vantage below.
             console.error('Finnhub candles failed:', err.message);
           }
         }
@@ -302,7 +294,6 @@ export default async function handler(req, res) {
           return res.status(200).json(candles);
         }
       } catch (err) {
-        // Don't abort — fall through to Alpha Vantage below.
         console.error('TwelveData candles fallback failed:', err.message);
       }
     }
