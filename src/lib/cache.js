@@ -1,38 +1,24 @@
-// Shared cache backed by Supabase Postgres.
-// Persists across ALL serverless instances (unlike the old in-memory Map),
-// so one user's fetch benefits every concurrent user within the TTL window.
+// Simple in-memory cache for the browser session.
+// Scoped per-user automatically since it's client-side.
 
-import { createClient } from '@supabase/supabase-js';
+const store = new Map();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-export async function get(key, ttlMs = 30000) {
-  const { data, error } = await supabase
-    .from('cache')
-    .select('value, expires_at')
-    .eq('key', key)
-    .maybeSingle();
-
-  if (error || !data) return null;
-  if (new Date(data.expires_at).getTime() < Date.now()) {
-    supabase.from('cache').delete().eq('key', key).then(() => {});
+export function get(key, ttlMs = 30000) {
+  const entry = store.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    store.delete(key);
     return null;
   }
-  return data.value;
+  return entry.data;
 }
 
-export async function set(key, data, ttlMs = 30000) {
-  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
-  await supabase
-    .from('cache')
-    .upsert({ key, value: data, expires_at: expiresAt }, { onConflict: 'key' });
+export function set(key, data, ttlMs = 30000) {
+  store.set(key, { data, expiresAt: Date.now() + ttlMs });
 }
 
-export async function del(key) {
-  await supabase.from('cache').delete().eq('key', key);
+export function del(key) {
+  store.delete(key);
 }
 
 export function ttlFor(type, interval = '1h') {
