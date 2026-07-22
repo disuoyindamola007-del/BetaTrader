@@ -16,14 +16,14 @@ const twelveDataIntervalMap = {
 };
 
 async function fetchFinnhub(url) {
-  if (isRateLimited()) {
+  if (isRateLimited('finnhub')) {
     const err = new Error('Rate limit cooldown active');
     err.rateLimited = true;
     throw err;
   }
   const res = await fetch(url);
   if (res.status === 429) {
-    triggerRateLimitCooldown();
+    triggerRateLimitCooldown('finnhub');
     const err = new Error('Finnhub rate limit reached');
     err.rateLimited = true;
     throw err;
@@ -67,7 +67,7 @@ async function fetchTwelveDataQuote(symbolParam, apiKey) {
   if (cached) return cached;
   const response = await fetch(`${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${apiKey}`);
   if (response.status === 429) {
-    triggerRateLimitCooldown();
+    triggerRateLimitCooldown('twelvedata');
     const err = new Error('TwelveData rate limit reached');
     err.rateLimited = true;
     throw err;
@@ -86,7 +86,7 @@ async function fetchTwelveDataCandles(symbol, interval, outputsize, apiKey) {
   if (cached) return cached;
   const response = await fetch(`${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${apiKey}`);
   if (response.status === 429) {
-    triggerRateLimitCooldown();
+    triggerRateLimitCooldown('twelvedata');
     const err = new Error('TwelveData rate limit reached');
     err.rateLimited = true;
     throw err;
@@ -159,15 +159,11 @@ export default async function handler(req, res) {
   const avSymbols = symbols.map(s => alphaVantageIndexMap[s] || s);
 
   try {
-    if (isRateLimited()) {
-      return res.status(429).json({ error: 'Rate limit cooldown active — retry shortly', rateLimited: true, retryAfter: 60 });
-    }
-
     if (type === 'quote' || isBatch) {
       const result = {};
       const fallbackSymbols = [];
 
-      if (FINNHUB_API_KEY) {
+      if (FINNHUB_API_KEY && !isRateLimited('finnhub')) {
         let finnhubRateLimited = false;
         for (const sym of symbols) {
           if (finnhubRateLimited) { fallbackSymbols.push(sym); continue; }
@@ -203,7 +199,7 @@ export default async function handler(req, res) {
         fallbackSymbols.push(...symbols);
       }
 
-      if (fallbackSymbols.length > 0 && TWELVE_DATA_API_KEY) {
+      if (fallbackSymbols.length > 0 && TWELVE_DATA_API_KEY && !isRateLimited('twelvedata')) {
         try {
           const symbolParam = fallbackSymbols.join(',');
           const data = await fetchTwelveDataQuote(symbolParam, TWELVE_DATA_API_KEY);
@@ -254,7 +250,7 @@ export default async function handler(req, res) {
 
     const targetSymbol = symbols[0];
 
-    if (FINNHUB_API_KEY && interval !== '4h') {
+    if (FINNHUB_API_KEY && interval !== '4h' && !isRateLimited('finnhub')) {
       const resolution = finnhubResolutionMap[interval];
       if (resolution) {
         const cacheKey = `fh:candles:${targetSymbol}:${resolution}:${outputsize}`;
@@ -285,7 +281,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (TWELVE_DATA_API_KEY) {
+    if (TWELVE_DATA_API_KEY && !isRateLimited('twelvedata')) {
       try {
         const data = await fetchTwelveDataCandles(targetSymbol, interval, outputsize, TWELVE_DATA_API_KEY);
         const candles = normalizeTwelveDataCandles(data);

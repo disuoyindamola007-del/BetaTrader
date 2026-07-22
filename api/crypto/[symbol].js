@@ -23,7 +23,7 @@ function getId(symbol) {
 }
 
 async function fetchCoinGecko(url) {
-  if (isRateLimited()) {
+  if (isRateLimited('coingecko')) {
     const err = new Error('Rate limit cooldown active');
     err.rateLimited = true;
     throw err;
@@ -32,7 +32,7 @@ async function fetchCoinGecko(url) {
   const res = await fetch(url, { headers: { accept: 'application/json' } });
 
   if (res.status === 429) {
-    triggerRateLimitCooldown();
+    triggerRateLimitCooldown('coingecko');
     const err = new Error('CoinGecko rate limit reached');
     err.rateLimited = true;
     throw err;
@@ -51,7 +51,6 @@ function normalizeStats(id, coin) {
   const change = price * (changePct / 100);
   const volume = coin.usd_24h_vol ?? 0;
 
-  // Approximate high/low from price ± change range (CoinGecko free tier doesn't give 24h high/low)
   const high24h = price * (1 + Math.abs(changePct) / 100);
   const low24h = price * (1 - Math.abs(changePct) / 100);
 

@@ -35,7 +35,7 @@ export default async function handler(req, res) {
   const tdInterval = intervalMap[interval] || '1h';
 
   try {
-    if (isRateLimited()) {
+    if (isRateLimited('twelvedata')) {
       return res.status(429).json({ error: 'Rate limit cooldown active — retry shortly', rateLimited: true, retryAfter: 60 });
     }
 
@@ -52,13 +52,14 @@ export default async function handler(req, res) {
           `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`
         );
         if (response.status === 429) {
-          triggerRateLimitCooldown();
+          triggerRateLimitCooldown('twelvedata');
           const err = new Error('TwelveData rate limit reached');
           err.rateLimited = true;
           throw err;
         }
         if (!response.ok) throw new Error(`TwelveData quote fetch failed: ${response.status}`);
         data = await response.json();
+        console.error('[DEBUG] TwelveData commodities response:', symbolParam, JSON.stringify(data).slice(0, 500));
         checkTdError(data);
         await set(cacheKey, data, ttlFor('batch'));
       }
@@ -90,13 +91,14 @@ export default async function handler(req, res) {
         `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbolParam)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`
       );
       if (response.status === 429) {
-        triggerRateLimitCooldown();
+        triggerRateLimitCooldown('twelvedata');
         const err = new Error('TwelveData rate limit reached');
         err.rateLimited = true;
         throw err;
       }
       if (!response.ok) throw new Error(`TwelveData candles fetch failed: ${response.status}`);
       data = await response.json();
+      console.error('[DEBUG] TwelveData commodities candles response:', symbolParam, JSON.stringify(data).slice(0, 500));
       checkTdError(data);
       await set(cacheKey, data, ttlFor('candles', interval));
     }

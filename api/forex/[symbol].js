@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   const tdInterval = intervalMap[interval] || '1h';
 
   try {
-    if (isRateLimited()) {
+    if (isRateLimited('twelvedata')) {
       return res.status(429).json({ error: 'Rate limit cooldown active — retry shortly', rateLimited: true, retryAfter: 60 });
     }
 
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
           `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`
         );
         if (response.status === 429) {
-          triggerRateLimitCooldown();
+          triggerRateLimitCooldown('twelvedata');
           const err = new Error('TwelveData rate limit reached');
           err.rateLimited = true;
           throw err;
@@ -53,7 +53,6 @@ export default async function handler(req, res) {
 
       const parsed = parseTdQuote(data, symbols);
 
-      // ALSO store per-symbol quote cache so AssetDetail can reuse
       for (const sym of symbols) {
         const perSym = parsed[sym] || parsed[sym.replace('/', '')];
         if (perSym) {
@@ -77,7 +76,7 @@ export default async function handler(req, res) {
         `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbolParam)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`
       );
       if (response.status === 429) {
-        triggerRateLimitCooldown();
+        triggerRateLimitCooldown('twelvedata');
         const err = new Error('TwelveData rate limit reached');
         err.rateLimited = true;
         throw err;
