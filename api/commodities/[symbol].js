@@ -113,7 +113,7 @@ export default async function handler(req, res) {
     }));
 
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-    return res.status(200).json(candles);
+    return res.status(200).json(json(candles));
 
   } catch (error) {
     console.error('Commodities proxy error:', error.message);
@@ -123,4 +123,5 @@ export default async function handler(req, res) {
       rateLimited: error.rateLimited || false,
     });
   }
-}
+      }
+                  
