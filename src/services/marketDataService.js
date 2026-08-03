@@ -4,7 +4,9 @@
 // Features:
 // - Request deduplication: same in-flight promise shared across callers
 // - Smart refresh: per-category intervals, pauses when tab hidden
-// - Rate-limit cooldown: one 429 pauses all requests for 60s
+// - Rate-limit cooldown: PER-CATEGORY — a 429 on one category (e.g.
+//   commodities/TwelveData) no longer blocks other categories
+//   (e.g. crypto/CoinGecko). Fixes the "one API dies, everything dies" bug.
 // - Stale fallback: keeps showing last good data on error
 // - Unified batch/single quote caching: batch quotes are stored per-symbol too
 // - Temporary diagnostics: track request counts for optimization verification
@@ -101,10 +103,13 @@ export function getRefreshInterval(category) {
 }
 
 // ==================== FETCH CORE ====================
+// `category` is now REQUIRED and drives a per-category cooldown key, so a
+// 429 from TwelveData (forex/commodities/stocks) can never block CoinGecko
+// (crypto), and vice versa.
 
-async function fetchJson(url, endpointLabel = 'unknown') {
-  if (isRateLimited()) {
-    const err = new Error(`Rate limit cooldown — retry in ${getCooldownSeconds()}s`);
+async function fetchJson(url, category, endpointLabel = 'unknown') {
+  if (isRateLimited(category)) {
+    const err = new Error(`Rate limit cooldown — retry in ${getCooldownSeconds(category)}s`);
     err.rateLimited = true;
     err.isCooldown = true;
     throw err;
@@ -114,7 +119,7 @@ async function fetchJson(url, endpointLabel = 'unknown') {
   const res = await fetch(url);
 
   if (res.status === 429) {
-    triggerRateLimitCooldown();
+    triggerRateLimitCooldown(category);
     const err = new Error('Rate limit reached (429)');
     err.rateLimited = true;
     throw err;
@@ -167,7 +172,7 @@ export async function fetchQuote(symbol) {
   const route = getRoute(category);
 
   const data = await dedupe(getQuoteCacheKey(symbol), () =>
-    fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?type=quote`, 'quote')
+    fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?type=quote`, category, 'quote')
   );
 
   const quote = data[symbol] || data[symbol.replace('/', '')] || data;
@@ -200,7 +205,7 @@ export async function fetchBatchQuotes(symbolsByCategory) {
     try {
       const route = getRoute(category);
       const data = await dedupe(batchCacheKey, () =>
-        fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbols.join(','))}?type=quote`, 'batch')
+        fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbols.join(','))}?type=quote`, category, 'batch')
       );
 
       for (const sym of symbols) {
@@ -239,7 +244,7 @@ export async function fetchCandles(symbol, interval = '1h', limit = 200) {
 
   const route = getRoute(category);
   const data = await dedupe(cacheKey, () =>
-    fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?interval=${interval}&limit=${limit}&type=candles`, `candles:${interval}`)
+    fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?interval=${interval}&limit=${limit}&type=candles`, category, `candles:${interval}`)
   );
 
   await set(cacheKey, data, ttlFor('candles', interval));
@@ -260,7 +265,7 @@ export async function fetchCryptoBatch() {
 
   try {
     const data = await dedupe(cacheKey, () =>
-      fetchJson(`${API_BASE}/api/crypto/all?type=quote`, 'crypto-batch')
+      fetchJson(`${API_BASE}/api/crypto/all?type=quote`, 'crypto', 'crypto-batch')
     );
     for (const [sym, quote] of Object.entries(data)) {
       if (quote && quote.price != null) {

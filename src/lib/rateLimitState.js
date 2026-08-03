@@ -1,24 +1,27 @@
-// Shared module-level cooldown. One 429 anywhere pauses everything for 60s.
+// Per-category cooldown. A 429 on one category (e.g. commodities/TwelveData)
+// no longer blocks any other category (e.g. crypto/CoinGecko).
 
 const COOLDOWN_MS = 60_000;
-let cooldownUntil = 0;
+const cooldowns = {}; // { crypto: ts, forex: ts, stocks: ts, commodities: ts }
 
-export function isRateLimited() {
-  return Date.now() < cooldownUntil;
+export function isRateLimited(category) {
+  const until = cooldowns[category] || 0;
+  return Date.now() < until;
 }
 
-export function getCooldownRemainingMs() {
-  return Math.max(0, cooldownUntil - Date.now());
+export function getCooldownRemainingMs(category) {
+  const until = cooldowns[category] || 0;
+  return Math.max(0, until - Date.now());
 }
 
-export function getCooldownSeconds() {
-  return Math.ceil(getCooldownRemainingMs() / 1000);
+export function getCooldownSeconds(category) {
+  return Math.ceil(getCooldownRemainingMs(category) / 1000);
 }
 
-export function triggerRateLimitCooldown() {
-  cooldownUntil = Date.now() + COOLDOWN_MS;
+export function triggerRateLimitCooldown(category) {
+  cooldowns[category] = Date.now() + COOLDOWN_MS;
 }
 
-export function clearRateLimitCooldown() {
-  cooldownUntil = 0;
+export function clearRateLimitCooldown(category) {
+  cooldowns[category] = 0;
 }
