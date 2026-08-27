@@ -8,6 +8,7 @@ import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
 const categories = ['All', 'Forex', 'Crypto', 'Metals', 'Indices', 'Commodities'];
+const unsupportedSymbols = new Set(['OIL', 'SILVER']);
 
 export default function MarketsScreen() {
   const { navigateToAsset } = useApp();
@@ -27,7 +28,7 @@ export default function MarketsScreen() {
 
   // Separate crypto and non-crypto symbols
   const cryptoSymbols = useMemo(() => filteredAssets.filter(a => getCategory(a.symbol) === 'crypto').map(a => a.symbol), [filteredAssets]);
-  const nonCryptoSymbols = useMemo(() => filteredAssets.filter(a => getCategory(a.symbol) !== 'crypto').map(a => a.symbol), [filteredAssets]);
+  const nonCryptoSymbols = useMemo(() => filteredAssets.filter(a => getCategory(a.symbol) !== 'crypto' && !unsupportedSymbols.has(a.symbol)).map(a => a.symbol), [filteredAssets]);
 
   // Fetch data via centralized hooks
   const { data: cryptoData, isLoading: cryptoLoading, isStale: cryptoStale, error: cryptoError } = useCryptoBatch(cryptoSymbols.length > 0);
@@ -79,21 +80,28 @@ export default function MarketsScreen() {
           const live = livePrices[asset.symbol] || livePrices[asset.symbol.replace('/', '')];
           const hasLive = live && live.price != null;
           return (
-            <button key={asset.symbol} onClick={() => navigateToAsset(asset)} className="glass-card-hover p-4 text-left">
+            <button
+              key={asset.symbol}
+              onClick={() => !unsupportedSymbols.has(asset.symbol) && navigateToAsset(asset)}
+              disabled={unsupportedSymbols.has(asset.symbol)}
+              className={`glass-card-hover p-4 text-left ${unsupportedSymbols.has(asset.symbol) ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
               <div className="flex items-start justify-between mb-2">
                 <p className="text-sm font-bold">{asset.symbol}</p>
-                <ChevronRight size={14} className="text-slate-600" />
+                {unsupportedSymbols.has(asset.symbol) ? <AlertTriangle size={14} className="text-amber-400" /> : <ChevronRight size={14} className="text-slate-600" />}
               </div>
               <p className="text-[11px] text-slate-500 mb-3 truncate">{asset.name}</p>
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-sm font-bold font-mono">
-                    {hasLive
+                    {unsupportedSymbols.has(asset.symbol)
+                      ? 'Unavailable'
+                      : hasLive
                       ? (asset.category === 'crypto' && live.price > 1000 ? `$${live.price.toLocaleString()}` : live.price.toFixed(live.price < 1 ? 5 : 4))
                       : (asset.price != null ? (asset.category === 'crypto' && asset.price > 1000 ? `$${asset.price.toLocaleString()}` : asset.price.toFixed(asset.price < 1 ? 5 : 4)) : '--')
                     }
                   </p>
-                  <PriceChange value={hasLive ? live.change : asset.change} pct={hasLive ? live.changePct : asset.changePct} />
+                  <PriceChange value={unsupportedSymbols.has(asset.symbol) ? null : (hasLive ? live.change : asset.change)} pct={unsupportedSymbols.has(asset.symbol) ? null : (hasLive ? live.changePct : asset.changePct)} />
                 </div>
                 <AIBadge bias={asset.bias} confidence={asset.confidence} />
               </div>

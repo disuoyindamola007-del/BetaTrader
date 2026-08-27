@@ -1,14 +1,18 @@
 import { get, set, ttlFor } from '../../lib/cache.js';
+import { validateMarketQuery } from '../../lib/validateMarketQuery.js';
 import { parseTdQuote, checkTdError } from '../../lib/twelveData.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
+const UNSUPPORTED_SYMBOLS = {
+  OIL: 'Oil data is unavailable from TwelveData on the current plan.',
+  CRUDE: 'Oil data is unavailable from TwelveData on the current plan.',
+  SILVER: 'Silver data is unavailable from TwelveData on the current plan.',
+};
+
 const SYMBOL_MAP = {
   'GOLD': 'XAU/USD',
-  'SILVER': 'XAG/USD',
-  'OIL': 'WTI/USD',
-  'CRUDE': 'WTI/USD',
   'BRENT': 'BRENT/USD',
 };
 
@@ -19,9 +23,8 @@ function mapSymbol(sym) {
 export default async function handler(req, res) {
   const { symbol, interval = '1h', outputsize = '200', type = 'candles' } = req.query;
 
-  if (!symbol) {
-    return res.status(400).json({ error: 'Symbol required' });
-  }
+  const validation = validateMarketQuery({ symbol, interval, type, size: outputsize });
+  if (validation.error) return res.status(400).json({ error: validation.error });
 
   const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
   if (!TWELVE_DATA_API_KEY) {
@@ -30,6 +33,17 @@ export default async function handler(req, res) {
 
   const isBatch = symbol.includes(',');
   const symbols = symbol.split(',').map(s => s.trim().toUpperCase());
+  const unsupported = symbols.filter(s => UNSUPPORTED_SYMBOLS[s]);
+  if (unsupported.length > 0) {
+    return res.status(422).json({
+      error: unsupported.length === 1
+        ? UNSUPPORTED_SYMBOLS[unsupported[0]]
+        : `${unsupported.join(', ')} are unavailable from TwelveData on the current plan.`,
+      unsupported: true,
+      symbols: unsupported,
+    });
+  }
+
   const mappedSymbols = symbols.map(mapSymbol);
   const intervalMap = { '1m': '1min', '5m': '5min', '15m': '15min', '1h': '1h', '4h': '4h', '1d': '1day', '1w': '1week' };
   const tdInterval = intervalMap[interval] || '1h';

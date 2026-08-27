@@ -1,11 +1,16 @@
 import { get, set, ttlFor } from '../../lib/cache.js';
+import { validateMarketQuery } from '../../lib/validateMarketQuery.js';
 import { parseTdQuote, checkTdError } from '../../lib/twelveData.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v2';
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
-const alphaVantageIndexMap = { 'SPX': 'SPY', 'NDX': 'QQQ', 'DJI': 'DIA' };
+const INDEX_PROXY_MAP = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA' };
+
+function mapProviderSymbol(symbol) {
+  return INDEX_PROXY_MAP[symbol] || symbol;
+}
 
 const finnhubResolutionMap = {
   '1m': '1', '5m': '5', '15m': '15', '1h': '60', '1d': 'D', '1w': 'W',
@@ -148,7 +153,8 @@ function normalizeAlphaVantageCandles(data, interval) {
 
 export default async function handler(req, res) {
   const { symbol, interval = '1d', outputsize = '200', type = 'candles' } = req.query;
-  if (!symbol) return res.status(400).json({ error: 'Symbol required' });
+  const validation = validateMarketQuery({ symbol, interval, type, size: outputsize });
+  if (validation.error) return res.status(400).json({ error: validation.error });
 
   const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
   const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
@@ -156,7 +162,6 @@ export default async function handler(req, res) {
 
   const isBatch = symbol.includes(',');
   const symbols = symbol.split(',').map(s => s.trim().toUpperCase());
-  const avSymbols = symbols.map(s => alphaVantageIndexMap[s] || s);
 
   try {
     if (type === 'quote' || isBatch) {
@@ -168,7 +173,8 @@ export default async function handler(req, res) {
         for (const sym of symbols) {
           if (finnhubRateLimited) { fallbackSymbols.push(sym); continue; }
 
-          const cacheKey = `fh:quote:${sym}`;
+          const providerSym = mapProviderSymbol(sym);
+          const cacheKey = `fh:quote:${providerSym}`;
           const cached = await get(cacheKey, ttlFor('quote'));
 
           let quote = null;
@@ -176,7 +182,7 @@ export default async function handler(req, res) {
             quote = cached;
           } else {
             try {
-              const data = await fetchFinnhub(`${FINNHUB_BASE}/quote?symbol=${sym}&token=${FINNHUB_API_KEY}`);
+              const data = await fetchFinnhub(`${FINNHUB_BASE}/quote?symbol=${encodeURIComponent(providerSym)}&token=${FINNHUB_API_KEY}`);
               quote = normalizeFinnhubQuote(data);
               if (quote) await set(cacheKey, quote, ttlFor('quote'));
             } catch (err) {
@@ -201,13 +207,16 @@ export default async function handler(req, res) {
 
       if (fallbackSymbols.length > 0 && TWELVE_DATA_API_KEY && !isRateLimited('twelvedata')) {
         try {
-          const symbolParam = fallbackSymbols.join(',');
+          const providerSymbols = fallbackSymbols.map(mapProviderSymbol);
+          const symbolParam = providerSymbols.join(',');
           const data = await fetchTwelveDataQuote(symbolParam, TWELVE_DATA_API_KEY);
-          const parsed = parseTdQuote(data, fallbackSymbols);
-          for (const sym of fallbackSymbols) {
-            if (parsed[sym] && !result[sym]) {
-              result[sym] = parsed[sym];
-              await set(`quote:stocks:${sym}`, parsed[sym], ttlFor('quote'));
+          const parsed = parseTdQuote(data, providerSymbols);
+          for (let i = 0; i < fallbackSymbols.length; i++) {
+            const sym = fallbackSymbols[i];
+            const quote = parsed[providerSymbols[i]];
+            if (quote && !result[sym]) {
+              result[sym] = quote;
+              await set(`quote:stocks:${sym}`, quote, ttlFor('quote'));
             }
           }
         } catch (err) {
@@ -218,7 +227,7 @@ export default async function handler(req, res) {
       const stillMissing = symbols.filter(s => !result[s]);
       if (stillMissing.length > 0 && ALPHA_VANTAGE_API_KEY) {
         for (const sym of stillMissing) {
-          const avSym = alphaVantageIndexMap[sym] || sym;
+          const avSym = mapProviderSymbol(sym);
           try {
             const data = await fetchAlphaVantageQuote(avSym, ALPHA_VANTAGE_API_KEY);
             const q = data['Global Quote'];
@@ -249,11 +258,12 @@ export default async function handler(req, res) {
     }
 
     const targetSymbol = symbols[0];
+    const providerSymbol = mapProviderSymbol(targetSymbol);
 
     if (FINNHUB_API_KEY && interval !== '4h' && !isRateLimited('finnhub')) {
       const resolution = finnhubResolutionMap[interval];
       if (resolution) {
-        const cacheKey = `fh:candles:${targetSymbol}:${resolution}:${outputsize}`;
+        const cacheKey = `fh:candles:${providerSymbol}:${resolution}:${outputsize}`;
         const cached = await get(cacheKey, ttlFor('candles', interval));
         let candles = null;
         if (cached) {
@@ -263,7 +273,7 @@ export default async function handler(req, res) {
             const now = Math.floor(Date.now() / 1000);
             const lookbackDays = interval === '1m' ? 2 : interval === '5m' ? 5 : interval === '15m' ? 10 : interval === '1h' ? 30 : interval === '1d' ? 365 : 730;
             const from = now - (lookbackDays * 86400);
-            const url = `${FINNHUB_BASE}/stock/candle?symbol=${targetSymbol}&resolution=${resolution}&from=${from}&to=${now}&token=${FINNHUB_API_KEY}`;
+            const url = `${FINNHUB_BASE}/stock/candle?symbol=${encodeURIComponent(providerSymbol)}&resolution=${resolution}&from=${from}&to=${now}&token=${FINNHUB_API_KEY}`;
             const data = await fetchFinnhub(url);
             candles = normalizeFinnhubCandles(data);
             if (candles) {
@@ -283,7 +293,7 @@ export default async function handler(req, res) {
 
     if (TWELVE_DATA_API_KEY && !isRateLimited('twelvedata')) {
       try {
-        const data = await fetchTwelveDataCandles(targetSymbol, interval, outputsize, TWELVE_DATA_API_KEY);
+        const data = await fetchTwelveDataCandles(providerSymbol, interval, outputsize, TWELVE_DATA_API_KEY);
         const candles = normalizeTwelveDataCandles(data);
         if (candles && candles.length > 0) {
           res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
@@ -296,8 +306,7 @@ export default async function handler(req, res) {
 
     if (ALPHA_VANTAGE_API_KEY) {
       try {
-        const avSym = alphaVantageIndexMap[targetSymbol] || targetSymbol;
-        const data = await fetchAlphaVantageCandles(avSym, interval, ALPHA_VANTAGE_API_KEY);
+        const data = await fetchAlphaVantageCandles(providerSymbol, interval, ALPHA_VANTAGE_API_KEY);
         const candles = normalizeAlphaVantageCandles(data, interval);
         if (candles && candles.length > 0) {
           res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=3600');

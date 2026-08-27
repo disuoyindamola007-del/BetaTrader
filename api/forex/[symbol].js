@@ -1,4 +1,5 @@
 import { get, set, ttlFor } from '../../lib/cache.js';
+import { validateMarketQuery } from '../../lib/validateMarketQuery.js';
 import { parseTdQuote, checkTdError } from '../../lib/twelveData.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
@@ -7,9 +8,8 @@ const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 export default async function handler(req, res) {
   const { symbol, interval = '1h', outputsize = '200', type = 'candles' } = req.query;
 
-  if (!symbol) {
-    return res.status(400).json({ error: 'Symbol required' });
-  }
+  const validation = validateMarketQuery({ symbol, interval, type, size: outputsize });
+  if (validation.error) return res.status(400).json({ error: validation.error });
 
   const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
   if (!TWELVE_DATA_API_KEY) {

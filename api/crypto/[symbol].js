@@ -1,4 +1,5 @@
 import { get, set, ttlFor } from '../../lib/cache.js';
+import { validateMarketQuery } from '../../lib/validateMarketQuery.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
@@ -72,8 +73,11 @@ function normalizeStats(id, coin) {
 export default async function handler(req, res) {
   const { symbol, interval = '1d', limit = '200', type = 'candles' } = req.query;
 
+  const validation = validateMarketQuery({ symbol, interval, type, size: limit, sizeName: 'limit' });
+  if (validation.error) return res.status(400).json({ error: validation.error });
+
   try {
-    if (type === 'quote' || symbol === 'all' || (symbol && symbol.includes(','))) {
+    if (type === 'quote' || symbol === 'all' || symbol.includes(',')) {
       const cacheKey = 'cg:batch:quote';
       const cached = await get(cacheKey, ttlFor('batch'));
 
