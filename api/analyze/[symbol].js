@@ -1,12 +1,9 @@
 import { get, set } from '../../lib/cache.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+const MODEL = 'openai/gpt-oss-120b'; // llama-3.3-70b-versatile deprecated by Groq (June 2026), shutting down Aug 2026
 const ANALYSIS_TTL_MS = 5 * 60_000; // indicators move slowly; avoid re-billing Groq on every refresh
 
-// Dedicated cooldown for Groq only — deliberately NOT the shared market-data
-// rateLimitState (lib/rateLimitState.js), since that cooldown is scoped to
-// price/candle providers and a Groq 429 has nothing to do with those.
 let groqCooldownUntil = 0;
 
 function round(n, decimals) {
