@@ -1,8 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../AppContext.jsx';
 import { Search, ChevronRight, RefreshCw, AlertTriangle, Clock } from 'lucide-react';
 import { mockAssets } from '../../data/mockData.js';
 import { useCryptoBatch, useBatchQuotes } from '../../hooks/useMarketData.js';
+import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
+import { assetFromSearchResult } from '../../data/supportedSymbols.js';
 import { getCategory } from '../../services/marketDataService.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
@@ -11,20 +13,28 @@ const categories = ['All', 'Forex', 'Crypto', 'Metals', 'Indices', 'Commodities'
 const unsupportedSymbols = new Set(['OIL', 'SILVER']);
 
 export default function MarketsScreen() {
-  const { navigateToAsset } = useApp();
+  const { navigateToAsset, marketSearchRequest, clearMarketSearchRequest } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
+  const searchInputRef = useRef(null);
+  const { results: searchResults, isLoading: searchLoading, error: searchError } = useSymbolSearch(searchQuery);
+
+  useEffect(() => {
+    if (!marketSearchRequest) return;
+    setSearchQuery('');
+    setActiveCategory('All');
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+    clearMarketSearchRequest();
+  }, [marketSearchRequest, clearMarketSearchRequest]);
 
   // Filter assets
   const filteredAssets = useMemo(() => {
     return mockAssets.filter(asset => {
-      const matchesSearch = asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           asset.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = activeCategory === 'All' ||
                              asset.category.toLowerCase() === activeCategory.toLowerCase();
-      return matchesSearch && matchesCategory;
+      return matchesCategory;
     });
-  }, [searchQuery, activeCategory]);
+  }, [activeCategory]);
 
   // Separate crypto and non-crypto symbols
   const cryptoSymbols = useMemo(() => filteredAssets.filter(a => getCategory(a.symbol) === 'crypto').map(a => a.symbol), [filteredAssets]);
@@ -62,8 +72,34 @@ export default function MarketsScreen() {
       {/* Search */}
       <div className="relative mb-4">
         <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-        <input type="text" placeholder="Search symbol (e.g. EUR/USD, BTC...)" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full input-field pl-11" />
+        <input ref={searchInputRef} type="search" placeholder="Search crypto, forex, or stocks" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full input-field pl-11 pr-10" autoComplete="off" aria-label="Search markets" />
+        {searchLoading && <RefreshCw size={15} className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-400 animate-spin" />}
       </div>
+
+      {searchQuery.trim() && (
+        <div className="mb-5 border-y border-slate-800/60">
+          {searchResults.map(result => (
+            <button
+              key={`${result.category}:${result.symbol}`}
+              onClick={() => navigateToAsset(assetFromSearchResult(result))}
+              className="w-full min-h-14 py-3 flex items-center justify-between gap-3 text-left border-b border-slate-800/40 last:border-b-0 hover:bg-slate-900/60 transition-colors"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">{result.symbol}</span>
+                  <span className="text-[10px] uppercase text-slate-500">{result.category}</span>
+                </div>
+                <p className="text-xs text-slate-500 truncate">{result.name}</p>
+              </div>
+              <ChevronRight size={16} className="shrink-0 text-slate-600" />
+            </button>
+          ))}
+          {!searchLoading && searchResults.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">No supported symbols found</p>
+          )}
+          {searchError && <p className="pb-3 text-center text-xs text-amber-400">Stock search unavailable. Supported markets are still shown.</p>}
+        </div>
+      )}
 
       {/* Categories */}
       <div className="flex gap-2 overflow-x-auto scroll-hide mb-4 pb-1">
@@ -75,7 +111,7 @@ export default function MarketsScreen() {
       </div>
 
       {/* Asset Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 ${searchQuery.trim() ? 'hidden' : ''}`}>
         {filteredAssets.map((asset) => {
           const live = livePrices[asset.symbol] || livePrices[asset.symbol.replace('/', '')];
           const hasLive = live && live.price != null;
@@ -110,7 +146,7 @@ export default function MarketsScreen() {
         })}
       </div>
 
-      {filteredAssets.length === 0 && <div className="text-center py-12"><p className="text-slate-500 text-sm">No assets found</p></div>}
+      {!searchQuery.trim() && filteredAssets.length === 0 && <div className="text-center py-12"><p className="text-slate-500 text-sm">No assets found</p></div>}
     </div>
   );
 }

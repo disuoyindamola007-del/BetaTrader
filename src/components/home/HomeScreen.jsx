@@ -15,7 +15,7 @@ import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
 export default function HomeScreen() {
-  const { navigateToAsset, setActiveTab, userName } = useApp();
+  const { navigateToAsset, setActiveTab, openMarketSearch, userName } = useApp();
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
@@ -253,7 +253,7 @@ export default function HomeScreen() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3"><span className="section-title">Quick Actions</span></div>
         <div className="grid grid-cols-2 gap-2.5">
-          <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-colors group"><Search size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Analyze Asset</span></button>
+          <button onClick={openMarketSearch} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-colors group"><Search size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Analyze Asset</span></button>
           <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-blue-500/30 transition-colors group"><BarChart3 size={20} className="text-blue-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Run Backtest</span></button>
           <button onClick={() => setActiveTab('journal')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-violet-500/30 transition-colors group"><BookOpen size={20} className="text-violet-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Open Journal</span></button>
           <button onClick={() => setActiveTab('alerts')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-amber-500/30 transition-colors group"><Bell size={20} className="text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Create Alert</span></button>

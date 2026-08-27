@@ -7,6 +7,7 @@ const AppContext = createContext();
 export function AppProvider({ children }) {
   const [activeTab, setActiveTab] = useState('home');
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const [marketSearchRequest, setMarketSearchRequest] = useState(0);
   const [backtestStep, setBacktestStep] = useState(0);
   const [journalView, setJournalView] = useState('dashboard');
   const [userName, setUserName] = useState('Trader');
@@ -35,9 +36,18 @@ export function AppProvider({ children }) {
     setSelectedAsset(null);
   };
 
+  const openMarketSearch = () => {
+    setSelectedAsset(null);
+    setActiveTab('markets');
+    setMarketSearchRequest(request => request + 1);
+  };
+
+  const clearMarketSearchRequest = () => setMarketSearchRequest(0);
+
   const value = {
     activeTab, setActiveTab,
     selectedAsset, setSelectedAsset, navigateToAsset, goBack,
+    marketSearchRequest, openMarketSearch, clearMarketSearchRequest,
     backtestStep, setBacktestStep,
     journalView, setJournalView,
     darkMode, setDarkMode,
