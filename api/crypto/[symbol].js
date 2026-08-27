@@ -2,6 +2,7 @@ import { get, set, ttlFor } from '../../lib/cache.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
+const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY || process.env.COINGECKO_DEMO_API_KEY || '';
 
 const SYMBOL_TO_ID = {
   BTC: 'bitcoin',
@@ -29,7 +30,10 @@ async function fetchCoinGecko(url) {
     throw err;
   }
 
-  const res = await fetch(url, { headers: { accept: 'application/json' } });
+  const headers = { accept: 'application/json' };
+  if (COINGECKO_API_KEY) headers['x-cg-demo-api-key'] = COINGECKO_API_KEY;
+
+  const res = await fetch(url, { headers });
 
   if (res.status === 429) {
     triggerRateLimitCooldown('coingecko');

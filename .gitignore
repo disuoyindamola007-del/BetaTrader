@@ -12,3 +12,5 @@ apply-phase1-fixes.sh
 _backup-before-*/
 dist/
 *.zip
+.vercel
+.env*
