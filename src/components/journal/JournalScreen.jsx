@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BookOpen, Plus, BarChart3, TrendingUp, TrendingDown, Trash2, X, ChevronRight, Calendar, Clock, Target } from 'lucide-react';
+import { BookOpen, Plus, BarChart3, TrendingUp, TrendingDown, Trash2, X, ChevronRight, Calendar, Clock } from 'lucide-react';
 import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
 import { getTrades, createTrade, deleteTrade } from '../../services/journalService.js';
 
@@ -12,29 +12,34 @@ const EMOTIONS = [
 ];
 const STRATEGIES = ['Breakout', 'Trend Following', 'Reversal', 'Range Trading', 'Scalping', 'Swing'];
 
-// Field config per asset class
-const FIELD_CONFIG = {
-  forex: {
-    quantityLabel: 'Lot Size',
-    quantityPlaceholder: '0.01',
-    quantityKey: 'lotSize',
-  },
-  stocks: {
-    quantityLabel: 'Shares',
-    quantityPlaceholder: '10',
-    quantityKey: 'quantity',
-  },
-  crypto: {
-    quantityLabel: 'Coins',
-    quantityPlaceholder: '0.5',
-    quantityKey: 'quantity',
-  },
-  commodities: {
-    quantityLabel: 'Units',
-    quantityPlaceholder: '1',
-    quantityKey: 'quantity',
-  },
-};
+// Detect commodity instrument type: 'cfd' (metals → Lot Size) or 'futures' (energy/etc → Contracts)
+function getCommodityType(symbol) {
+  const upper = (symbol || '').toUpperCase().replace('/', '');
+  // Metals trade CFD/forex-style with lot sizing
+  if (/^(XAU|XAG|XPT|XPD|GOLD|SILVER|PLATINUM|PALLADIUM)/.test(upper)) return 'cfd';
+  return 'futures';
+}
+
+// Field config per asset class / instrument type
+function getFieldConfig(assetClass, symbol) {
+  if (assetClass === 'forex') {
+    return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false };
+  }
+  if (assetClass === 'crypto') {
+    return { quantityLabel: 'Quantity', quantityPlaceholder: '0.5', quantityKey: 'quantity', hasLeverage: true };
+  }
+  if (assetClass === 'stocks') {
+    return { quantityLabel: 'Shares', quantityPlaceholder: '10', quantityKey: 'quantity', hasLeverage: false };
+  }
+  if (assetClass === 'commodities') {
+    const type = getCommodityType(symbol);
+    if (type === 'cfd') {
+      return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false };
+    }
+    return { quantityLabel: 'Contracts', quantityPlaceholder: '1', quantityKey: 'quantity', hasLeverage: false };
+  }
+  return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false };
+}
 
 const emptyForm = {
   asset: '',
@@ -48,6 +53,7 @@ const emptyForm = {
   exit: '',
   quantity: '',
   lotSize: '',
+  leverage: '',
   stopLoss: '',
   takeProfit: '',
   bias: '',
@@ -65,10 +71,8 @@ function calculatePnL(trade) {
   const entry = Number(trade.entry) || 0;
   const exit = Number(trade.exit) || 0;
   const qty = Number(trade.quantity) || Number(trade.lotSize) || 0;
-
   if (!entry || !exit || !qty) return 0;
-
-  const gross = trade.direction === 'buy' ? (exit - entry) * qty : (entry - exit) * qty;
+  const gross = trade.direction === 'sell' ? (entry - exit) * qty : (exit - entry) * qty;
   return Math.round(gross * 100) / 100;
 }
 
@@ -86,15 +90,18 @@ export default function JournalScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [selectedTrade, setSelectedTrade] = useState(null);
+  const [deleteConfirmTrade, setDeleteConfirmTrade] = useState(null);
   const { results: searchResults, isLoading: searchLoading } = useSymbolSearch(searchQuery);
 
-  // Persist trades to localStorage whenever they change
+  // Refresh trades from localStorage whenever switching to Performance tab
+  // This guarantees Performance always reads the same source of truth as My Trades
   useEffect(() => {
-    // getTrades() already reads from localStorage on init via useState lazy init
-    // No need to re-save here since createTrade/deleteTrade handle persistence
-  }, [trades]);
+    if (activeTab === 'performance') {
+      setTrades(getTrades());
+    }
+  }, [activeTab]);
 
-  // Compute P&L and result for each trade
+  // Compute P&L and result for each trade (single source of truth for all tabs)
   const tradesWithPnL = trades.map(t => {
     const pnl = calculatePnL(t);
     return { ...t, pnl, result: deriveResult(pnl) };
@@ -131,36 +138,35 @@ export default function JournalScreen() {
     if (!form.direction) errors.direction = 'Choose Buy or Sell.';
     if (!form.timeframe) errors.timeframe = 'Select a timeframe.';
     setFormErrors(prev => ({ ...prev, step1: errors }));
-
     if (Object.values(errors).some(e => e)) return;
     setLogStep(s => Math.min(3, s + 1));
   };
 
+  const handleContinue = () => {
+    // Step 2 validation — then advance to Step 3 (do NOT save yet)
+    const config = getFieldConfig(form.assetClass, form.assetSymbol);
+    const errors = { ...step2Errors };
+    if (form.entry === '' || Number.isNaN(Number(form.entry))) errors.entry = 'Enter entry price.';
+    if (form.exit === '' || Number.isNaN(Number(form.exit))) errors.exit = 'Enter exit price.';
+    if (form[config.quantityKey] === '' || Number.isNaN(Number(form[config.quantityKey]))) {
+      errors.quantity = `Enter ${config.quantityLabel.toLowerCase()}.`;
+    }
+    setFormErrors(prev => ({ ...prev, step2: errors }));
+    if (Object.values(errors).some(e => e)) return;
+    setLogStep(3);
+  };
+
   const handleSave = () => {
-    // Step 2 validation
-    if (logStep === 2) {
-      const config = FIELD_CONFIG[form.assetClass] || FIELD_CONFIG.forex;
-      const errors = { ...step2Errors };
-      if (form.entry === '' || Number.isNaN(Number(form.entry))) errors.entry = 'Enter entry price.';
-      if (form.exit === '' || Number.isNaN(Number(form.exit))) errors.exit = 'Enter exit price.';
-      if (form[config.quantityKey] === '' || Number.isNaN(Number(form[config.quantityKey]))) {
-        errors.quantity = `Enter ${config.quantityLabel.toLowerCase()}.`;
-      }
-      setFormErrors(prev => ({ ...prev, step2: errors }));
-      if (Object.values(errors).some(e => e)) return;
-    }
+    // Step 3 validation — then save the trade
+    const errors = { ...step3Errors };
+    if (!form.bias) errors.bias = 'Select market bias.';
+    if (!form.emotion) errors.emotion = 'Select emotional state.';
+    if (!form.strategy) errors.strategy = 'Select strategy.';
+    setFormErrors(prev => ({ ...prev, step3: errors }));
+    if (Object.values(errors).some(e => e)) return;
 
-    // Step 3 validation
-    if (logStep === 3) {
-      const errors = { ...step3Errors };
-      if (!form.bias) errors.bias = 'Select market bias.';
-      if (!form.emotion) errors.emotion = 'Select emotional state.';
-      if (!form.strategy) errors.strategy = 'Select strategy.';
-      setFormErrors(prev => ({ ...prev, step3: errors }));
-      if (Object.values(errors).some(e => e)) return;
-    }
-
-    const qtyKey = FIELD_CONFIG[form.assetClass]?.quantityKey || 'lotSize';
+    const config = getFieldConfig(form.assetClass, form.assetSymbol);
+    const qtyKey = config.quantityKey;
     const updated = createTrade({
       asset: form.assetSymbol.trim().toUpperCase(),
       assetName: form.assetName,
@@ -170,6 +176,7 @@ export default function JournalScreen() {
       entry: Number(form.entry) || null,
       exit: Number(form.exit) || null,
       [qtyKey]: Number(form[qtyKey]) || null,
+      leverage: config.hasLeverage ? (Number(form.leverage) || null) : null,
       stopLoss: form.stopLoss === '' ? null : Number(form.stopLoss),
       takeProfit: form.takeProfit === '' ? null : Number(form.takeProfit),
       bias: form.bias,
@@ -183,10 +190,9 @@ export default function JournalScreen() {
   };
 
   const handleDelete = (trade) => {
-    const confirmed = window.confirm(`Delete this ${trade.asset} trade (${trade.date})?`);
-    if (!confirmed) return;
     const updated = deleteTrade(trade.id);
     setTrades(updated);
+    setDeleteConfirmTrade(null);
   };
 
   const selectSearchResult = (result) => {
@@ -201,7 +207,7 @@ export default function JournalScreen() {
     setShowSearchResults(false);
   };
 
-  const getFieldConfig = () => FIELD_CONFIG[form.assetClass] || FIELD_CONFIG.forex;
+  const fieldConfig = getFieldConfig(form.assetClass, form.assetSymbol);
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
@@ -272,12 +278,11 @@ export default function JournalScreen() {
 
           <div className="flex flex-col gap-2">
             {tradesWithPnL.map(trade => (
-              <button
-                key={trade.id}
-                onClick={() => setSelectedTrade(trade)}
-                className="glass-card-hover p-4 text-left w-full"
-              >
-                <div className="flex items-center justify-between mb-2">
+              <div key={trade.id} className="glass-card p-4 flex items-center justify-between">
+                <button
+                  onClick={() => setSelectedTrade(trade)}
+                  className="flex-1 text-left flex items-center justify-between gap-2"
+                >
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold">{trade.asset}</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
@@ -293,13 +298,15 @@ export default function JournalScreen() {
                     </span>
                     <ChevronRight size={14} className="text-slate-600" />
                   </div>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-slate-500">
-                  <span>{trade.date}</span>
-                  {trade.strategy && <span className="capitalize">{trade.strategy}</span>}
-                </div>
-                {trade.notes && <p className="text-xs text-slate-400 mt-2 line-clamp-1">{trade.notes}</p>}
-              </button>
+                </button>
+                <button
+                  onClick={() => setDeleteConfirmTrade(trade)}
+                  className="ml-2 p-2 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0"
+                  aria-label={`Delete ${trade.asset} trade`}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             ))}
           </div>
         </>
@@ -451,6 +458,7 @@ export default function JournalScreen() {
               {form.assetSymbol && (
                 <p className="text-xs text-slate-500">
                   {form.assetSymbol} • {form.direction === 'buy' ? 'Long' : 'Short'} • {form.timeframe === 'custom' ? form.timeframeCustom : form.timeframe}
+                  {fieldConfig.hasLeverage && form.leverage ? ` • ${form.leverage}x Leverage` : ''}
                 </p>
               )}
 
@@ -481,20 +489,31 @@ export default function JournalScreen() {
 
               <div>
                 <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">
-                  {getFieldConfig().quantityLabel} *
+                  {fieldConfig.quantityLabel} *
                 </label>
                 <input
                   type="number"
-                  placeholder={getFieldConfig().quantityPlaceholder}
-                  value={form[getFieldConfig().quantityKey]}
-                  onChange={e => updateField(getFieldConfig().quantityKey, e.target.value)}
+                  placeholder={fieldConfig.quantityPlaceholder}
+                  value={form[fieldConfig.quantityKey]}
+                  onChange={e => updateField(fieldConfig.quantityKey, e.target.value)}
                   className="w-full input-field"
                 />
                 {formErrors.step2.quantity && <p className="text-xs text-red-400 mt-1">{formErrors.step2.quantity}</p>}
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {getFieldConfig().quantityLabel} for {form.assetClass || 'forex'} trades
-                </p>
               </div>
+
+              {fieldConfig.hasLeverage && (
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Leverage</label>
+                  <input
+                    type="number"
+                    placeholder="10"
+                    value={form.leverage}
+                    onChange={e => updateField('leverage', e.target.value)}
+                    className="w-full input-field"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">e.g. 10, 20, 50, 100</p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -521,7 +540,7 @@ export default function JournalScreen() {
 
               <div className="flex gap-2 mt-2">
                 <button onClick={() => setLogStep(1)} className="flex-1 btn-secondary">Back</button>
-                <button onClick={handleSave} className="flex-1 btn-primary">Save Trade</button>
+                <button onClick={handleContinue} className="flex-1 btn-primary">Continue</button>
               </div>
             </div>
           )}
@@ -543,7 +562,8 @@ export default function JournalScreen() {
                         {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
                       </p>
                       <p className="text-xs text-slate-500 mt-1">
-                        Entry: ${Number(form.entry).toFixed(4)} → Exit: ${Number(form.exit).toFixed(4)} • {getFieldConfig().quantityLabel}: {form[getFieldConfig().quantityKey]}
+                        Entry: ${Number(form.entry).toFixed(4)} → Exit: ${Number(form.exit).toFixed(4)} • {fieldConfig.quantityLabel}: {form[fieldConfig.quantityKey]}
+                        {fieldConfig.hasLeverage && form.leverage ? ` • ${form.leverage}x` : ''}
                       </p>
                     </div>
                     <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
@@ -673,7 +693,6 @@ export default function JournalScreen() {
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xl font-bold">{selectedTrade.asset}</span>
@@ -694,7 +713,6 @@ export default function JournalScreen() {
                 {selectedTrade.assetClass && <span className="capitalize bg-slate-800 px-2 py-0.5 rounded">{selectedTrade.assetClass}</span>}
               </div>
 
-              {/* Prices */}
               <div className="glass-card p-3 space-y-2">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Prices</p>
                 <div className="flex justify-between text-sm">
@@ -719,17 +737,16 @@ export default function JournalScreen() {
                 )}
               </div>
 
-              {/* Size */}
               {(selectedTrade.lotSize || selectedTrade.quantity) && (
                 <div className="glass-card p-3">
                   <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Size</p>
                   <p className="text-sm font-mono text-slate-200">
                     {selectedTrade.lotSize ? `Lot Size: ${selectedTrade.lotSize}` : `Quantity: ${selectedTrade.quantity}`}
+                    {selectedTrade.leverage ? ` • ${selectedTrade.leverage}x Leverage` : ''}
                   </p>
                 </div>
               )}
 
-              {/* Result */}
               <div className="glass-card p-3">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Result</p>
                 <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
@@ -740,7 +757,6 @@ export default function JournalScreen() {
                 </span>
               </div>
 
-              {/* Review */}
               {(selectedTrade.bias || selectedTrade.emotion || selectedTrade.strategy) && (
                 <div className="glass-card p-3 space-y-2">
                   <p className="text-[10px] text-slate-500 uppercase tracking-wider">Review</p>
@@ -772,10 +788,9 @@ export default function JournalScreen() {
                 </div>
               )}
 
-              {/* Actions */}
               <div className="flex gap-2 pt-2">
                 <button
-                  onClick={() => { setSelectedTrade(null); handleDelete(selectedTrade); }}
+                  onClick={() => { setSelectedTrade(null); setDeleteConfirmTrade(selectedTrade); }}
                   className="flex-1 py-3 rounded-xl text-sm font-semibold bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/15 transition-colors flex items-center justify-center gap-2"
                 >
                   <Trash2 size={16} /> Delete Trade
@@ -787,6 +802,46 @@ export default function JournalScreen() {
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmTrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirmTrade(null)}>
+          <div className="bg-slate-900 w-full sm:w-[400px] rounded-2xl border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-700 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={20} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-200">Delete Trade?</h3>
+                <p className="text-xs text-slate-500 mt-0.5">This action cannot be undone.</p>
+              </div>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-slate-300">
+                Are you sure you want to delete the trade for <span className="font-semibold text-slate-200">{deleteConfirmTrade.asset}</span>
+                {' '}({deleteConfirmTrade.date}) with P&L of{' '}
+                <span className={`font-mono font-semibold ${deleteConfirmTrade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {deleteConfirmTrade.pnl >= 0 ? '+' : ''}${deleteConfirmTrade.pnl.toFixed(2)}
+                </span>?
+              </p>
+            </div>
+            <div className="flex gap-2 p-4 border-t border-slate-700">
+              <button
+                onClick={() => setDeleteConfirmTrade(null)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirmTrade)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
