@@ -20,8 +20,10 @@ const SYMBOL_TO_ID = {
 
 const ALL_IDS = Object.values(SYMBOL_TO_ID).join(',');
 
-function getId(symbol) {
-  return SYMBOL_TO_ID[symbol.toUpperCase().replace('/', '')];
+function getId(symbol, providerId) {
+  if (providerId) return providerId;
+  const normalized = symbol.toUpperCase().replace('/', '');
+  return SYMBOL_TO_ID[normalized] || Object.values(SYMBOL_TO_ID).find(id => id === symbol.toLowerCase()) || null;
 }
 
 async function fetchCoinGecko(url) {
@@ -71,23 +73,25 @@ function normalizeStats(id, coin) {
 }
 
 export default async function handler(req, res) {
-  const { symbol, interval = '1d', limit = '200', type = 'candles' } = req.query;
+  const { symbol, interval = '1d', limit = '200', type = 'candles', providerId } = req.query;
 
   const validation = validateMarketQuery({ symbol, interval, type, size: limit, sizeName: 'limit' });
   if (validation.error) return res.status(400).json({ error: validation.error });
 
   try {
     if (type === 'quote' || symbol === 'all' || symbol.includes(',')) {
-      const cacheKey = 'cg:batch:quote';
-      const cached = await get(cacheKey, ttlFor('batch'));
+      const requestedId = providerId ? getId(symbol, providerId) : null;
+      const cacheKey = requestedId ? `cg:quote:${requestedId}` : 'cg:batch:quote';
+      const cached = await get(cacheKey, ttlFor(requestedId ? 'quote' : 'batch'));
 
       let data;
       if (cached) {
         data = cached;
       } else {
-        const url = `${COINGECKO_BASE}/simple/price?ids=${ALL_IDS}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;
+        const ids = requestedId || ALL_IDS;
+        const url = `${COINGECKO_BASE}/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;
         data = await fetchCoinGecko(url);
-        await set(cacheKey, data, ttlFor('batch'));
+        await set(cacheKey, data, ttlFor(requestedId ? 'quote' : 'batch'));
       }
 
       if (symbol === 'all' || (symbol && symbol.includes(','))) {
@@ -107,7 +111,7 @@ export default async function handler(req, res) {
         return res.status(200).json(result);
       }
 
-      const id = getId(symbol);
+      const id = getId(symbol, providerId);
       if (!id) return res.status(400).json({ error: `Unknown crypto symbol: ${symbol}` });
       if (!data[id]) return res.status(404).json({ error: `No data for ${symbol}` });
 
@@ -115,8 +119,9 @@ export default async function handler(req, res) {
       return res.status(200).json(normalizeStats(id, data[id]));
     }
 
-    const id = getId(symbol);
+    const id = getId(symbol, providerId);
     if (!id) return res.status(400).json({ error: `Unknown crypto symbol: ${symbol}` });
+
 
     const days = interval === '1m' || interval === '5m' || interval === '15m' || interval === '1h'
       ? '1'

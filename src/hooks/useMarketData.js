@@ -20,7 +20,7 @@ import {
 //    in background, then update UI automatically when it arrives
 // 5. Auto-refresh on interval when tab is active
 
-export function useQuote(symbol, enabled = true) {
+export function useQuote(symbol, enabled = true, providerSymbol = null, categoryHint = null) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +34,7 @@ export function useQuote(symbol, enabled = true) {
     const callSymbol = symbol;
     currentSymbolRef.current = callSymbol;
 
-    const { cached, isFresh } = await peekQuote(callSymbol);
+    const { cached, isFresh } = await peekQuote(callSymbol, providerSymbol, categoryHint);
 
     if (cached) {
       setData(cached);
@@ -44,7 +44,7 @@ export function useQuote(symbol, enabled = true) {
     if (!cached || !isFresh) {
       if (!isBackground) setIsLoading(true);
       try {
-        const quote = await fetchQuote(callSymbol);
+        const quote = await fetchQuote(callSymbol, providerSymbol, categoryHint);
         if (currentSymbolRef.current !== callSymbol) return;
         setData(quote);
         setError(null);
@@ -59,14 +59,14 @@ export function useQuote(symbol, enabled = true) {
         }
       }
     }
-  }, [symbol, enabled]);
+  }, [symbol, enabled, providerSymbol, categoryHint]);
 
   useEffect(() => {
     if (!symbol || !enabled) return;
 
     load(false);
 
-    const category = getCategory(symbol);
+    const category = getCategory(symbol, categoryHint);
     const intervalMs = getRefreshInterval(category);
 
     intervalRef.current = setInterval(() => {
@@ -82,7 +82,7 @@ export function useQuote(symbol, enabled = true) {
 }
 
 export function useCandles(symbol, interval, options = {}) {
-  const { enabled = true, limit = 200 } = options;
+  const { enabled = true, limit = 200, providerSymbol = null, categoryHint = null } = options;
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -93,7 +93,7 @@ export function useCandles(symbol, interval, options = {}) {
     if (!isBackground) setIsLoading(true);
 
     try {
-      const candles = await fetchCandles(symbol, interval, limit);
+      const candles = await fetchCandles(symbol, interval, limit, providerSymbol, categoryHint);
       setData(candles);
       setError(null);
     } catch (err) {
@@ -101,19 +101,21 @@ export function useCandles(symbol, interval, options = {}) {
     } finally {
       if (!isBackground) setIsLoading(false);
     }
-  }, [symbol, interval, limit, enabled]);
+  }, [symbol, interval, limit, enabled, providerSymbol, categoryHint]);
+
 
   useEffect(() => {
     if (!symbol || !enabled) return;
     load(false);
 
-    const intervalMs = getRefreshInterval('stocks');
+    const intervalMs = getRefreshInterval(getCategory(symbol, categoryHint));
     intervalRef.current = setInterval(() => {
       if (isTabActive()) load(true);
     }, intervalMs);
 
     return () => clearInterval(intervalRef.current);
   }, [symbol, interval, limit, enabled, load]);
+
 
   const refetch = useCallback(() => load(false), [load]);
 

@@ -20,8 +20,8 @@ export default function AssetDetail() {
   // Stale-while-revalidate: useQuote displays cached data immediately.
   // If the cached quote is fresh (within TTL), no network request is made.
   // If expired, the old value displays while a fresh quote is fetched in background.
-  const { data: quote, error: quoteError, isLoading: quoteLoading, isStale, refetch: refetchQuote } = useQuote(symbol, !!symbol);
-  const { data: candles, error: candleError, isLoading: candleLoading, refetch: refetchCandles } = useCandles(symbol, timeframe, { enabled: !!symbol, limit: 200 });
+  const { data: quote, error: quoteError, isLoading: quoteLoading, isStale, refetch: refetchQuote } = useQuote(symbol, !!symbol, selectedAsset?.providerSymbol, selectedAsset?.category);
+  const { data: candles, error: candleError, isLoading: candleLoading, refetch: refetchCandles } = useCandles(symbol, timeframe, { enabled: !!symbol, limit: 200, providerSymbol: selectedAsset?.providerSymbol, categoryHint: selectedAsset?.category });
 
   const handleRetry = useCallback(() => {
     refetchQuote();

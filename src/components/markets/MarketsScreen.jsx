@@ -80,7 +80,7 @@ export default function MarketsScreen() {
         <div className="mb-5 border-y border-slate-800/60">
           {searchResults.map(result => (
             <button
-              key={`${result.category}:${result.symbol}`}
+              key={`${result.category}:${result.symbol}:${result.providerSymbol || result.source}`}
               onClick={() => navigateToAsset(assetFromSearchResult(result))}
               className="w-full min-h-14 py-3 flex items-center justify-between gap-3 text-left border-b border-slate-800/40 last:border-b-0 hover:bg-slate-900/60 transition-colors"
             >
@@ -97,7 +97,7 @@ export default function MarketsScreen() {
           {!searchLoading && searchResults.length === 0 && (
             <p className="py-8 text-center text-sm text-slate-500">No supported symbols found</p>
           )}
-          {searchError && <p className="pb-3 text-center text-xs text-amber-400">Stock search unavailable. Supported markets are still shown.</p>}
+          {searchError && <p className="pb-3 text-center text-xs text-amber-400">Search is temporarily unavailable.</p>}
         </div>
       )}
 

@@ -71,7 +71,10 @@ const FOREX_SET = new Set(['EURUSD','USDJPY','GBPUSD','AUDUSD','USDCAD','USDCHF'
 const COMMODITY_SET = new Set(['GOLD','SILVER','OIL','CRUDE','BRENT']);
 const INDEX_SET = new Set(['SPX','NDX','DJI']);
 
-export function getCategory(symbol) {
+export function getCategory(symbol, categoryHint = null) {
+  const hint = categoryHint?.toLowerCase();
+  if (hint === 'crypto' || hint === 'forex' || hint === 'stocks' || hint === 'commodities') return hint;
+  if (hint === 'indices' || hint === 'metals') return hint === 'indices' ? 'stocks' : 'commodities';
   if (!symbol) return 'stocks';
   const s = symbol.toUpperCase().replace('/', '');
   if (CRYPTO_SET.has(s)) return 'crypto';
@@ -136,18 +139,18 @@ async function fetchJson(url, category, endpointLabel = 'unknown') {
 
 // ==================== UNIFIED CACHE HELPERS ====================
 
-function getQuoteCacheKey(symbol) {
-  const category = getCategory(symbol);
+function getQuoteCacheKey(symbol, categoryHint = null) {
+  const category = getCategory(symbol, categoryHint);
   return `quote:${category}:${symbol}`;
 }
 
-async function setUnifiedQuoteCache(symbol, quoteData) {
-  const key = getQuoteCacheKey(symbol);
+async function setUnifiedQuoteCache(symbol, quoteData, categoryHint = null) {
+  const key = getQuoteCacheKey(symbol, categoryHint);
   await set(key, quoteData, ttlFor('quote'));
 }
 
-async function getUnifiedQuoteCache(symbol) {
-  const key = getQuoteCacheKey(symbol);
+async function getUnifiedQuoteCache(symbol, categoryHint = null) {
+  const key = getQuoteCacheKey(symbol, categoryHint);
   const cached = await get(key, ttlFor('quote'));
   if (cached) diagCacheHit();
   else diagCacheMiss();
@@ -155,8 +158,8 @@ async function getUnifiedQuoteCache(symbol) {
 }
 
 // Peek at quote without triggering diagnostics — used by hooks for SWR check
-export async function peekQuote(symbol) {
-  const key = getQuoteCacheKey(symbol);
+export async function peekQuote(symbol, providerSymbol = null, categoryHint = null) {
+  const key = getQuoteCacheKey(providerSymbol || symbol, categoryHint);
   const cached = await get(key, ttlFor('quote'));
   const isFresh = (await get(key, 0)) !== null;
   return { cached, isFresh };
@@ -164,19 +167,21 @@ export async function peekQuote(symbol) {
 
 // ==================== QUOTES ====================
 
-export async function fetchQuote(symbol) {
-  const cached = await getUnifiedQuoteCache(symbol);
+export async function fetchQuote(symbol, providerSymbol = null, categoryHint = null) {
+  const cacheSymbol = providerSymbol || symbol;
+  const cached = await getUnifiedQuoteCache(cacheSymbol, categoryHint);
   if (cached) return cached;
 
-  const category = getCategory(symbol);
+  const category = getCategory(symbol, categoryHint);
   const route = getRoute(category);
+  const providerParam = category === 'crypto' && providerSymbol ? `&providerId=${encodeURIComponent(providerSymbol)}` : '';
 
-  const data = await dedupe(getQuoteCacheKey(symbol), () =>
-    fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?type=quote`, category, 'quote')
+  const data = await dedupe(getQuoteCacheKey(cacheSymbol, categoryHint), () =>
+    fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?type=quote${providerParam}`, category, 'quote')
   );
 
   const quote = data[symbol] || data[symbol.replace('/', '')] || data;
-  await setUnifiedQuoteCache(symbol, quote);
+  await setUnifiedQuoteCache(cacheSymbol, quote, categoryHint);
   return quote;
 }
 
@@ -231,9 +236,10 @@ export async function fetchBatchQuotes(symbolsByCategory) {
 
 // ==================== CANDLES ====================
 
-export async function fetchCandles(symbol, interval = '1h', limit = 200) {
-  const category = getCategory(symbol);
-  const cacheKey = `candles:${category}:${symbol}:${interval}:${limit}`;
+export async function fetchCandles(symbol, interval = '1h', limit = 200, providerSymbol = null, categoryHint = null) {
+  const category = getCategory(symbol, categoryHint);
+  const cacheSymbol = providerSymbol || symbol;
+  const cacheKey = `candles:${category}:${cacheSymbol}:${interval}:${limit}`;
 
   const cached = await get(cacheKey, ttlFor('candles', interval));
   if (cached) {
@@ -243,8 +249,9 @@ export async function fetchCandles(symbol, interval = '1h', limit = 200) {
   diagCacheMiss();
 
   const route = getRoute(category);
+  const providerParam = category === 'crypto' && providerSymbol ? `&providerId=${encodeURIComponent(providerSymbol)}` : '';
   const data = await dedupe(cacheKey, () =>
-    fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?interval=${interval}&limit=${limit}&type=candles`, category, `candles:${interval}`)
+    fetchJson(`${API_BASE}${route}/${encodeURIComponent(symbol)}?interval=${interval}&limit=${limit}&type=candles${providerParam}`, category, `candles:${interval}`)
   );
 
   await set(cacheKey, data, ttlFor('candles', interval));
