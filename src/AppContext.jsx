@@ -7,6 +7,7 @@ const AppContext = createContext();
 export function AppProvider({ children }) {
   const [activeTab, setActiveTab] = useState('home');
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const [selectedNews, setSelectedNews] = useState(null);
   const [marketSearchRequest, setMarketSearchRequest] = useState(0);
   const [backtestStep, setBacktestStep] = useState(0);
   const [journalView, setJournalView] = useState('dashboard');
@@ -34,6 +35,14 @@ export function AppProvider({ children }) {
 
   const goBack = () => {
     setSelectedAsset(null);
+    setSelectedNews(null);
+  };
+
+  const clearNewsSelection = () => setSelectedNews(null);
+
+  const navigateToNews = (article) => {
+    setSelectedNews(article);
+    setActiveTab('home');
   };
 
   const openMarketSearch = () => {
@@ -47,6 +56,7 @@ export function AppProvider({ children }) {
   const value = {
     activeTab, setActiveTab,
     selectedAsset, setSelectedAsset, navigateToAsset, goBack,
+    selectedNews, navigateToNews, clearNewsSelection,
     marketSearchRequest, openMarketSearch, clearMarketSearchRequest,
     backtestStep, setBacktestStep,
     journalView, setJournalView,

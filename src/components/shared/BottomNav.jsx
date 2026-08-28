@@ -2,7 +2,7 @@ import { Home, BarChart3, BookOpen, Bell, User } from 'lucide-react';
 import { useApp } from '../../AppContext.jsx';
 
 export default function BottomNav() {
-  const { activeTab, setActiveTab, setSelectedAsset } = useApp();
+  const { activeTab, setActiveTab, setSelectedAsset, clearNewsSelection } = useApp();
 
   const tabs = [
     { id: 'home', label: 'Home', icon: Home },
@@ -15,6 +15,7 @@ export default function BottomNav() {
   const handleTabClick = (tabId) => {
     setActiveTab(tabId);
     if (tabId !== 'markets') setSelectedAsset(null);
+    clearNewsSelection();
   };
 
   return (

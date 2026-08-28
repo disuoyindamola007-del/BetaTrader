@@ -7,15 +7,17 @@ import {
 } from 'lucide-react';
 import {
   mockAssets, marketPulse, watchlist, trending,
-  newsItems, economicEvents, aiBriefing
+  aiBriefing
 } from '../../data/mockData.js';
+import { useNews } from '../../hooks/useNews.js';
 import { useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { getCategory } from '../../services/marketDataService.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 
 export default function HomeScreen() {
-  const { navigateToAsset, setActiveTab, openMarketSearch, userName } = useApp();
+  const { navigateToAsset, navigateToNews, setActiveTab, openMarketSearch, userName } = useApp();
+  const { news: liveNews, isLoading: newsLoading, error: newsError } = useNews();
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
@@ -114,11 +116,7 @@ export default function HomeScreen() {
   const watchlistAssets = watchlist.map(getAssetData).filter(Boolean);
   const liveTrending = Object.keys(livePrices).length > 0 ? getLiveTrending() : trending;
 
-  const getImpactColor = (impact) => {
-    if (impact === 'high') return 'bg-red-500/15 text-red-400 border-red-500/20';
-    if (impact === 'medium') return 'bg-amber-500/15 text-amber-400 border-amber-500/20';
-    return 'bg-slate-700/30 text-slate-400 border-slate-600/20';
-  };
+  const displayedNews = liveNews.length > 0 ? liveNews : [];
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
@@ -226,18 +224,18 @@ export default function HomeScreen() {
       </div>
 
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-3"><span className="section-title">Latest News</span><span className="text-xs text-emerald-400 font-medium">View All</span></div>
+        <div className="flex items-center justify-between mb-3"><span className="section-title">Latest News</span><button onClick={() => setActiveTab('news')} className="text-xs text-emerald-400 font-medium">View All <ChevronRight size={12} className="inline" /></button></div>
         <div className="flex flex-col gap-3">
-          {newsItems.slice(0,3).map((news) => (
-            <div key={news.id} className="glass-card p-4">
-              <div className="flex items-center gap-2 mb-2"><span className="text-xs text-slate-500">{news.source}</span><span className="text-xs text-slate-600">&bull;</span><span className="text-xs text-slate-500">{news.time}</span></div>
+          {newsLoading && <div className="glass-card p-5 text-center"><RefreshCw size={18} className="mx-auto text-emerald-400 animate-spin" /></div>}
+          {!newsLoading && newsError && <div className="glass-card p-4 text-center text-sm text-amber-400">News is temporarily unavailable.</div>}
+          {!newsLoading && !newsError && displayedNews.slice(0, 3).map((news) => (
+            <button key={news.id} onClick={() => navigateToNews(news)} className="glass-card-hover p-4 text-left">
+              <div className="flex items-center gap-2 mb-2"><span className="text-xs text-slate-500">{news.source}</span><span className="text-xs text-slate-600">&bull;</span><span className="text-xs text-slate-500">{news.datetime ? new Date(news.datetime * 1000).toLocaleDateString() : ''}</span></div>
               <p className="text-sm font-semibold leading-relaxed mb-3">{news.headline}</p>
-              <div className="flex gap-2 flex-wrap">
-                {news.related.map(tag => <span key={tag} className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-1 rounded-md border border-slate-700/30">{tag}</span>)}
-                <span className="text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded-md border border-emerald-500/15 flex items-center gap-1"><Sparkles size={10} /> AI Summary</span>
-              </div>
-            </div>
+              <div className="flex gap-2 flex-wrap">{news.related.map(tag => <span key={tag} className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-1 rounded-md border border-slate-700/30">{tag}</span>)}<span className="text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded-md border border-emerald-500/15 flex items-center gap-1"><Sparkles size={10} /> AI Summary</span></div>
+            </button>
           ))}
+          {!newsLoading && !newsError && displayedNews.length === 0 && <div className="glass-card p-4 text-center text-sm text-slate-500">No news available.</div>}
         </div>
       </div>
 
