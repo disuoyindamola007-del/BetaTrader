@@ -12,12 +12,14 @@ import { useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarke
 import { getCategory } from '../../services/marketDataService.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
+import MarketPulseExplainer from './MarketPulseExplainer.jsx';
 
 export default function HomeScreen() {
   const { navigateToAsset, navigateToNews, setActiveTab, openMarketSearch, userName } = useApp();
   const { news: liveNews, isLoading: newsLoading, error: newsError } = useNews();
   const { data: marketOverview, isLoading: overviewLoading, error: overviewError, reload: reloadOverview } = useMarketOverview();
   const [briefingExpanded, setBriefingExpanded] = useState(false);
+  const [selectedPulseMetric, setSelectedPulseMetric] = useState(null);
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
@@ -175,11 +177,12 @@ export default function HomeScreen() {
         {overviewLoading && <div className="glass-card p-5 flex justify-center"><RefreshCw size={18} className="text-emerald-400 animate-spin" /></div>}
         {!overviewLoading && livePulse.length > 0 && <div className="grid grid-cols-3 gap-2">
           {livePulse.map((item) => (
-            <div key={item.label} className="glass-card p-3 text-center">
+            <button key={item.label} onClick={() => setSelectedPulseMetric(item)} className="glass-card p-3 text-center hover:border-emerald-500/30 active:scale-[0.98] transition-all" aria-label={`Explain ${item.label}`}>
               <p className="text-[10px] text-slate-500 mb-1">{item.label}</p>
               <p className="text-base font-bold font-mono text-slate-100">{item.value}</p>
               <p className={`text-[10px] font-medium ${item.color === 'emerald' ? 'text-emerald-400' : item.color === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>{item.sublabel}</p>
-            </div>
+              <p className="text-[9px] text-slate-600 mt-1">Tap to explain</p>
+            </button>
           ))}
         </div>}
         {!overviewLoading && livePulse.length === 0 && <div className="glass-card p-4 text-center"><p className="text-sm text-amber-400 mb-2">{overviewError || 'Live Market Pulse is temporarily unavailable.'}</p><button onClick={reloadOverview} className="text-xs text-emerald-400">Try Again</button></div>}
@@ -272,6 +275,8 @@ export default function HomeScreen() {
           <button onClick={() => setActiveTab('alerts')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-amber-500/30 transition-colors group"><Bell size={20} className="text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Create Alert</span></button>
         </div>
       </div>
+
+      <MarketPulseExplainer metric={selectedPulseMetric} onClose={() => setSelectedPulseMetric(null)} />
     </div>
   );
 }
