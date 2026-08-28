@@ -161,7 +161,16 @@ export default async function handler(req, res) {
   const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
   const isBatch = symbol.includes(',');
-  const symbols = symbol.split(',').map(s => s.trim().toUpperCase());
+  const requestedSymbols = symbol.split(',').map(s => s.trim().toUpperCase());
+  // Normalize index aliases once, before any provider lookup or cache access.
+  // Responses are translated back to the requested aliases below so the
+  // frontend API contract remains unchanged.
+  const symbols = requestedSymbols.map(mapProviderSymbol);
+  requestedSymbols.forEach((requestedSymbol, index) => {
+    if (requestedSymbol !== symbols[index]) {
+      console.info(`[Stocks] normalized ${requestedSymbol} -> ${symbols[index]} before provider lookup`);
+    }
+  });
 
   try {
     if (type === 'quote' || isBatch) {
@@ -253,8 +262,13 @@ export default async function handler(req, res) {
       if (Object.keys(result).length === 0) {
         return res.status(503).json({ error: 'No data available for requested symbols' });
       }
+      const responseResult = {};
+      for (let i = 0; i < requestedSymbols.length; i++) {
+        const quote = result[symbols[i]];
+        if (quote) responseResult[requestedSymbols[i]] = quote;
+      }
       res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
-      return res.status(200).json(result);
+      return res.status(200).json(responseResult);
     }
 
     const targetSymbol = symbols[0];
