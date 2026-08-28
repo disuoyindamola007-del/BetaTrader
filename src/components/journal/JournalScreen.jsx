@@ -1,16 +1,31 @@
 import { useState, useEffect } from 'react';
-import { BookOpen, Plus, BarChart3, TrendingUp, TrendingDown, Trash2, X, ChevronRight, Calendar, Clock } from 'lucide-react';
+import { BookOpen, Plus, BarChart3, TrendingUp, TrendingDown, Trash2, X, ChevronRight, Calendar, Clock, Leaf, ShieldCheck, AlertTriangle, Zap, ArrowUp, ArrowDown, Minus } from 'lucide-react';
 import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
 import { getTrades, createTrade, deleteTrade } from '../../services/journalService.js';
 
 const TIMEFRAME_OPTIONS = ['5m', '15m', '30m', '1H', '4H', '8H', '1D'];
 const EMOTIONS = [
-  { value: 'calm', label: 'Calm 🧘' },
-  { value: 'confident', label: 'Confident 💪' },
-  { value: 'anxious', label: 'Anxious 😰' },
-  { value: 'fomo', label: 'FOMO 🚀' },
+  { value: 'calm', label: 'Calm', icon: Leaf, color: 'text-emerald-400' },
+  { value: 'confident', label: 'Confident', icon: ShieldCheck, color: 'text-blue-400' },
+  { value: 'anxious', label: 'Anxious', icon: AlertTriangle, color: 'text-amber-400' },
+  { value: 'fomo', label: 'FOMO', icon: Zap, color: 'text-purple-400' },
 ];
 const STRATEGIES = ['Breakout', 'Trend Following', 'Reversal', 'Range Trading', 'Scalping', 'Swing'];
+
+const BIAS_OPTIONS = [
+  { value: 'Bullish', icon: ArrowUp, color: 'text-emerald-400' },
+  { value: 'Bearish', icon: ArrowDown, color: 'text-red-400' },
+  { value: 'Neutral', icon: Minus, color: 'text-slate-400' },
+];
+
+const STRATEGY_ICONS = {
+  Breakout: TrendingUp,
+  'Trend Following': TrendingUp,
+  Reversal: TrendingDown,
+  'Range Trading': BarChart3,
+  Scalping: Zap,
+  Swing: TrendingUp,
+};
 
 // Forex pip-value conversion (USD-quoted pairs)
 const PIP_VALUE_PER_LOT = {
@@ -106,6 +121,17 @@ const step1Errors = { asset: '', direction: '', timeframe: '' };
 const step2Errors = { entry: '', exit: '', quantity: '', slError: '', tpError: '', liqError: '' };
 const step3Errors = { bias: '', emotion: '', strategy: '' };
 
+// Format dollar amounts: drop trailing .00 on whole numbers, add thousands separators
+function formatMoney(amount) {
+  const hasCents = Math.round(amount * 100) % 100 !== 0;
+  return amount.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+}
+
 // Calculate P&L from trade data
 // Realized P/L for closed trades
 function calculateClosedPnL(trade) {
@@ -165,6 +191,7 @@ export default function JournalScreen() {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [deleteConfirmTrade, setDeleteConfirmTrade] = useState(null);
+  const [swipedId, setSwipedId] = useState(null); // for swipe-to-delete
   const { results: searchResults, isLoading: searchLoading } = useSymbolSearch(searchQuery);
 
   // Refresh trades from localStorage whenever switching to Performance tab
@@ -210,8 +237,8 @@ export default function JournalScreen() {
   const winningTrades = closedTrades.filter(t => t.pnl > 0);
   const bestTrade = winningTrades.length ? winningTrades.reduce((best, t) => (t.pnl > best.pnl ? t : best), winningTrades[0]) : null;
   const worstTrade = losingTrades.length ? losingTrades.reduce((worst, t) => (t.pnl < worst.pnl ? t : worst), losingTrades[0]) : null;
-  const avgWin = winningTrades.length ? (winningTrades.reduce((a, t) => a + t.pnl, 0) / winningTrades.length).toFixed(2) : 0;
-  const avgLoss = losingTrades.length ? (losingTrades.reduce((a, t) => a + t.pnl, 0) / losingTrades.length).toFixed(2) : 0;
+  const avgWin = winningTrades.length ? (winningTrades.reduce((a, t) => a + t.pnl, 0) / winningTrades.length) : 0;
+  const avgLoss = losingTrades.length ? (losingTrades.reduce((a, t) => a + t.pnl, 0) / losingTrades.length) : 0;
 
   const updateField = (field, value) => setForm(f => ({ ...f, [field]: value }));
 
@@ -425,7 +452,7 @@ export default function JournalScreen() {
       </div>
 
       {/* MY TRADES */}
-      {activeTab === 'trades' && (
+      {activeTab === 'trades' && !selectedTrade && (
         <>
           <div className="grid grid-cols-2 gap-2 mb-4">
             <div className="glass-card p-3">
@@ -455,51 +482,269 @@ export default function JournalScreen() {
           )}
 
           <div className="flex flex-col gap-2">
-            {tradesWithPnL.map(trade => (
-              <div key={trade.id} className="glass-card p-4 flex items-center justify-between">
-                <button
-                  onClick={() => setSelectedTrade(trade)}
-                  className="flex-1 text-left flex items-center justify-between gap-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">{trade.asset}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                      trade.direction === 'buy' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/15 text-red-400 border border-red-500/20'
-                    }`}>
-                      {trade.direction}
-                    </span>
-                    <span className="text-[10px] text-slate-500">{trade.timeframe}</span>
-                    {trade.status === 'open' ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20">Open</span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-500/15 text-slate-400 border border-slate-500/20">Closed</span>
-                    )}
+            {tradesWithPnL.map(trade => {
+              const isSwiped = swipedId === trade.id;
+              return (
+                <div key={trade.id} className="relative overflow-hidden rounded-xl" style={{ height: 'auto' }}>
+                  {/* Delete button behind the row */}
+                  <div
+                    className="absolute inset-0 flex items-center justify-end pr-4 bg-red-500 rounded-xl"
+                    style={{ zIndex: 0 }}
+                  >
+                    <button
+                      onClick={() => setDeleteConfirmTrade(trade)}
+                      className="flex items-center gap-2 text-white font-semibold px-4 py-3 rounded-lg"
+                    >
+                      <Trash2 size={16} /> Delete
+                    </button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {trade.status === 'open' ? (
-                      <span className="text-xs text-slate-500 text-right">
-                        TP: <span className="text-emerald-400 font-mono">+${trade.tpPnl?.toFixed(2)}</span>{' '}
-                        SL: <span className="text-red-400 font-mono">${trade.slPnl?.toFixed(2)}</span>
-                      </span>
-                    ) : (
-                      <span className={`text-sm font-bold font-mono ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
-                      </span>
-                    )}
-                    <ChevronRight size={14} className="text-slate-600" />
+                  {/* Trade row — slides left on swipe */}
+                  <div
+                    className={`glass-card p-4 flex items-center justify-between relative transition-transform duration-200 ${isSwiped ? '' : ''}`}
+                    style={{ zIndex: 1, transform: isSwiped ? 'translateX(-100px)' : 'translateX(0)' }}
+                    onTouchStart={e => {
+                      trade._swipeStartX = e.touches[0].clientX;
+                      setSwipedId(null); // close other swiped rows
+                    }}
+                    onTouchMove={e => {
+                      const dx = e.touches[0].clientX - (trade._swipeStartX || 0);
+                      if (dx < 0 && dx > -120) {
+                        e.currentTarget.style.transform = `translateX(${dx}px)`;
+                      }
+                    }}
+                    onTouchEnd={e => {
+                      const dx = e.changedTouches[0].clientX - (trade._swipeStartX || 0);
+                      if (dx < -80) {
+                        setSwipedId(trade.id);
+                        e.currentTarget.style.transform = 'translateX(-100px)';
+                      } else {
+                        setSwipedId(null);
+                        e.currentTarget.style.transform = 'translateX(0)';
+                      }
+                    }}
+                    onClick={() => {
+                      if (isSwiped) {
+                        setSwipedId(null);
+                        e.currentTarget.style.transform = 'translateX(0)';
+                        return;
+                      }
+                      setSelectedTrade(trade);
+                    }}
+                  >
+                    <div className="flex-1 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold">{trade.asset}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                          trade.direction === 'buy' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/15 text-red-400 border border-red-500/20'
+                        }`}>
+                          {trade.direction}
+                        </span>
+                        <span className="text-[10px] text-slate-500">{trade.timeframe}</span>
+                        {trade.status === 'open' ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20">Open</span>
+                        ) : (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-500/15 text-slate-400 border border-slate-500/20">Closed</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {trade.status === 'open' ? (
+                          <span className="text-xs text-slate-500 text-right">
+                            TP: <span className="text-emerald-400 font-mono">+{formatMoney(trade.tpPnl || 0)}</span>{' '}
+                            SL: <span className="text-red-400 font-mono">{formatMoney(trade.slPnl || 0)}</span>
+                          </span>
+                        ) : (
+                          <span className={`text-sm font-bold font-mono ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {trade.pnl >= 0 ? '+' : ''}{formatMoney(trade.pnl)}
+                          </span>
+                        )}
+                        <ChevronRight size={14} className="text-slate-600" />
+                      </div>
+                    </div>
                   </div>
-                </button>
-                <button
-                  onClick={() => setDeleteConfirmTrade(trade)}
-                  className="ml-2 p-2 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0"
-                  aria-label={`Delete ${trade.asset} trade`}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         </>
+      )}
+
+      {/* Full-page Trade Detail */}
+      {activeTab === 'trades' && selectedTrade && (
+        <div className="animate-fade-in">
+          <div className="flex items-center gap-3 mb-5">
+            <button
+              onClick={() => setSelectedTrade(null)}
+              className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <ChevronRight size={18} className="rotate-180" />
+            </button>
+            <h1 className="text-xl font-extrabold">Trade Details</h1>
+          </div>
+
+          <div className="space-y-4">
+            {/* Header: asset, direction, status, P/L */}
+            <div className="glass-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl font-bold">{selectedTrade.asset}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase ${
+                    selectedTrade.direction === 'buy' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/15 text-red-400 border border-red-500/20'
+                  }`}>
+                    {selectedTrade.direction}
+                  </span>
+                  {selectedTrade.status === 'open' ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20">Open</span>
+                  ) : (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-slate-500/15 text-slate-400 border border-slate-500/20">Closed</span>
+                  )}
+                </div>
+                {selectedTrade.status === 'closed' ? (
+                  <span className={`text-xl font-bold font-mono ${selectedTrade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {selectedTrade.pnl >= 0 ? '+' : ''}{formatMoney(selectedTrade.pnl)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-500">No realized P/L yet</span>
+                )}
+              </div>
+              <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
+                <span className="flex items-center gap-1"><Calendar size={12} /> {selectedTrade.date}</span>
+                <span className="flex items-center gap-1"><Clock size={12} /> {selectedTrade.timeframe}</span>
+                {selectedTrade.assetClass && <span className="capitalize bg-slate-800 px-2 py-0.5 rounded">{selectedTrade.assetClass}</span>}
+              </div>
+            </div>
+
+            {/* Prices */}
+            <div className="glass-card p-4 space-y-3">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Prices</p>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Entry</span>
+                <span className="font-mono text-slate-200">${Number(selectedTrade.entry).toFixed(4)}</span>
+              </div>
+              {selectedTrade.status === 'closed' && selectedTrade.exit && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Exit</span>
+                  <span className="font-mono text-slate-200">${Number(selectedTrade.exit).toFixed(4)}</span>
+                </div>
+              )}
+              {selectedTrade.status === 'open' && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Stop Loss</span>
+                    <span className="font-mono text-slate-200">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Take Profit</span>
+                    <span className="font-mono text-slate-200">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
+                  </div>
+                </>
+              )}
+              {selectedTrade.status === 'closed' && (selectedTrade.stopLoss || selectedTrade.takeProfit) && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Stop Loss</span>
+                    <span className="font-mono text-slate-200">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Take Profit</span>
+                    <span className="font-mono text-slate-200">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Size */}
+            {(selectedTrade.lotSize || selectedTrade.quantity || selectedTrade.capital) && (
+              <div className="glass-card p-4">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Size</p>
+                <p className="text-sm font-mono text-slate-200">
+                  {selectedTrade.lotSize && `Lot Size: ${selectedTrade.lotSize}`}
+                  {selectedTrade.quantity && selectedTrade.assetClass !== 'crypto' && `Quantity: ${selectedTrade.quantity}`}
+                  {selectedTrade.capital && `Capital: ${formatMoney(selectedTrade.capital)}`}
+                  {selectedTrade.leverage ? ` • ${selectedTrade.leverage}x Leverage` : ''}
+                </p>
+              </div>
+            )}
+
+            {/* Projected Outcomes (open trades) */}
+            {selectedTrade.status === 'open' && selectedTrade.tpPnl != null && (
+              <div className="glass-card p-4">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Projected Outcomes</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3">
+                    <p className="text-[10px] text-emerald-500 uppercase tracking-wider mb-1">If TP Hits</p>
+                    <p className="text-xl font-bold font-mono text-emerald-400">+{formatMoney(selectedTrade.tpPnl)}</p>
+                  </div>
+                  <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3">
+                    <p className="text-[10px] text-red-500 uppercase tracking-wider mb-1">If SL Hits</p>
+                    <p className="text-xl font-bold font-mono text-red-400">{formatMoney(selectedTrade.slPnl)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Result (closed trades) */}
+            {selectedTrade.status === 'closed' && selectedTrade.result && (
+              <div className="glass-card p-4">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Result</p>
+                <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
+                  selectedTrade.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
+                  selectedTrade.result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
+                }`}>
+                  {selectedTrade.result}
+                </span>
+              </div>
+            )}
+
+            {/* Review */}
+            {(selectedTrade.bias || selectedTrade.emotion || selectedTrade.strategy) && (
+              <div className="glass-card p-4 space-y-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Review</p>
+                {selectedTrade.bias && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Bias</span>
+                    <span className="text-slate-200">{selectedTrade.bias}</span>
+                  </div>
+                )}
+                {selectedTrade.emotion && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Emotion</span>
+                    <span className="text-slate-200 capitalize">{selectedTrade.emotion}</span>
+                  </div>
+                )}
+                {selectedTrade.strategy && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Strategy</span>
+                    <span className="text-slate-200 capitalize">{selectedTrade.strategy}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Notes */}
+            {selectedTrade.notes && (
+              <div className="glass-card p-4">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Notes</p>
+                <p className="text-sm text-slate-300">{selectedTrade.notes}</p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => { setSelectedTrade(null); setDeleteConfirmTrade(selectedTrade); }}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/15 transition-colors flex items-center justify-center gap-2"
+              >
+                <Trash2 size={16} /> Delete Trade
+              </button>
+              <button
+                onClick={() => setSelectedTrade(null)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* LOG TRADE - 3 Step Wizard */}
@@ -845,7 +1090,7 @@ export default function JournalScreen() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-2xl font-bold font-mono" style={{ color: closedPnl >= 0 ? '#10b981' : '#ef4444' }}>
-                          {closedPnl >= 0 ? '+' : ''}${closedPnl.toFixed(2)}
+                          {closedPnl >= 0 ? '+' : ''}{formatMoney(closedPnl)}
                         </p>
                         <p className="text-xs text-slate-500 mt-1">
                           Entry: ${entry.toFixed(4)} → Exit: ${Number(form.exit).toFixed(4)} • {fieldConfig.quantityLabel}: {form[fieldConfig.quantityKey]}
@@ -868,7 +1113,7 @@ export default function JournalScreen() {
                       <div>
                         <p className="text-[10px] text-emerald-500 uppercase tracking-wider mb-1">If TP Hits</p>
                         <p className="text-xl font-bold font-mono text-emerald-400">
-                          {tpPnl >= 0 ? '+' : ''}${tpPnl.toFixed(2)}
+                          {tpPnl >= 0 ? '+' : ''}{formatMoney(tpPnl)}
                         </p>
                         <p className="text-xs text-slate-500 mt-1">
                           Entry: ${entry.toFixed(4)} → TP: ${Number(form.takeProfit).toFixed(4)}
@@ -877,7 +1122,7 @@ export default function JournalScreen() {
                       <div>
                         <p className="text-[10px] text-red-500 uppercase tracking-wider mb-1">If SL Hits</p>
                         <p className="text-xl font-bold font-mono text-red-400">
-                          {slPnl >= 0 ? '+' : ''}${slPnl.toFixed(2)}
+                          {slPnl >= 0 ? '+' : ''}{formatMoney(slPnl)}
                         </p>
                         <p className="text-xs text-slate-500 mt-1">
                           Entry: ${entry.toFixed(4)} → SL: ${Number(form.stopLoss).toFixed(4)}
@@ -891,31 +1136,74 @@ export default function JournalScreen() {
                 )}
 
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Market Bias *</label>
-                  <select value={form.bias} onChange={e => updateField('bias', e.target.value)} className="w-full input-field">
-                    <option value="">Select bias...</option>
-                    <option>Bullish</option>
-                    <option>Bearish</option>
-                    <option>Neutral</option>
-                  </select>
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">Market Bias *</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {BIAS_OPTIONS.map(opt => {
+                      const Icon = opt.icon;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => updateField('bias', opt.value)}
+                          className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-semibold transition-all ${
+                            form.bias === opt.value
+                              ? 'bg-emerald-500 text-slate-950'
+                              : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                          }`}
+                        >
+                          <Icon size={18} className={opt.color} />
+                          {opt.value}
+                        </button>
+                      );
+                    })}
+                  </div>
                   {formErrors.step3.bias && <p className="text-xs text-red-400 mt-1">{formErrors.step3.bias}</p>}
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Emotional State *</label>
-                  <select value={form.emotion} onChange={e => updateField('emotion', e.target.value)} className="w-full input-field">
-                    <option value="">Select emotion...</option>
-                    {EMOTIONS.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
-                  </select>
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">Emotional State *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {EMOTIONS.map(opt => {
+                      const Icon = opt.icon;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => updateField('emotion', opt.value)}
+                          className={`flex items-center gap-2 py-3 px-3 rounded-xl text-sm font-semibold transition-all ${
+                            form.emotion === opt.value
+                              ? 'bg-emerald-500 text-slate-950'
+                              : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                          }`}
+                        >
+                          <Icon size={16} className={opt.color} />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                   {formErrors.step3.emotion && <p className="text-xs text-red-400 mt-1">{formErrors.step3.emotion}</p>}
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Strategy *</label>
-                  <select value={form.strategy} onChange={e => updateField('strategy', e.target.value)} className="w-full input-field">
-                    <option value="">Select strategy...</option>
-                    {STRATEGIES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">Strategy *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {STRATEGIES.map(s => {
+                      const Icon = STRATEGY_ICONS[s] || TrendingUp;
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => updateField('strategy', s)}
+                          className={`flex items-center gap-2 py-3 px-3 rounded-xl text-sm font-semibold transition-all ${
+                            form.strategy === s
+                              ? 'bg-emerald-500 text-slate-950'
+                              : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                          }`}
+                        >
+                          <Icon size={16} className="text-slate-400" />
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
                   {formErrors.step3.strategy && <p className="text-xs text-red-400 mt-1">{formErrors.step3.strategy}</p>}
                 </div>
 
@@ -965,7 +1253,7 @@ export default function JournalScreen() {
               <div className="glass-card p-3">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total P&L</p>
                 <p className={`text-lg font-bold font-mono ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {stats.totalPL >= 0 ? '+' : ''}${stats.totalPL.toFixed(2)}
+                  {stats.totalPL >= 0 ? '+' : ''}{formatMoney(stats.totalPL)}
                 </p>
               </div>
               <div className="glass-card p-3">
@@ -974,12 +1262,12 @@ export default function JournalScreen() {
               </div>
               <div className="glass-card p-3">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Avg Win</p>
-                <p className="text-lg font-bold font-mono text-emerald-400">${avgWin}</p>
+                <p className="text-lg font-bold font-mono text-emerald-400">{avgWin > 0 ? formatMoney(avgWin) : 'No wins'}</p>
               </div>
               <div className="glass-card p-3">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Avg Loss</p>
                 {losingTrades.length > 0 ? (
-                  <p className="text-lg font-bold font-mono text-red-400">${avgLoss}</p>
+                  <p className="text-lg font-bold font-mono text-red-400">{avgLoss < 0 ? formatMoney(avgLoss) : 'No losses'}</p>
                 ) : (
                   <p className="text-lg font-bold font-mono text-slate-500">No losses</p>
                 )}
@@ -988,13 +1276,13 @@ export default function JournalScreen() {
             {bestTrade && (
               <div className="glass-card p-3">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Best Trade</p>
-                <p className="text-sm font-semibold">{bestTrade.asset} <span className="text-emerald-400 font-mono">+${bestTrade.pnl.toFixed(2)}</span></p>
+                <p className="text-sm font-semibold">{bestTrade.asset} <span className="text-emerald-400 font-mono">+{formatMoney(bestTrade.pnl)}</span></p>
               </div>
             )}
             {worstTrade ? (
               <div className="glass-card p-3">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Worst Trade</p>
-                <p className="text-sm font-semibold">{worstTrade.asset} <span className="text-red-400 font-mono">${worstTrade.pnl.toFixed(2)}</span></p>
+                <p className="text-sm font-semibold">{worstTrade.asset} <span className="text-red-400 font-mono">{formatMoney(worstTrade.pnl)}</span></p>
               </div>
             ) : (
               <div className="glass-card p-3">
@@ -1005,173 +1293,6 @@ export default function JournalScreen() {
             <p className="text-[10px] text-slate-600 text-center mt-2">Stats computed from closed trades only. Charts coming in a future update.</p>
           </div>
         )
-      )}
-
-      {/* Trade Detail Modal */}
-      {selectedTrade && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setSelectedTrade(null)}>
-          <div className="bg-slate-900 w-full sm:w-[480px] sm:rounded-2xl rounded-t-2xl max-h-[85vh] overflow-y-auto border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="sticky top-0 bg-slate-900 border-b border-slate-700 p-4 flex items-center justify-between z-10">
-              <h2 className="text-lg font-bold">Trade Details</h2>
-              <button onClick={() => setSelectedTrade(null)} className="p-1 hover:bg-slate-800 rounded-full transition-colors">
-                <X size={20} className="text-slate-400" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-bold">{selectedTrade.asset}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase ${
-                    selectedTrade.direction === 'buy' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/15 text-red-400 border border-red-500/20'
-                  }`}>
-                    {selectedTrade.direction}
-                  </span>
-                  {selectedTrade.status === 'open' ? (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20">Open</span>
-                  ) : (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-slate-500/15 text-slate-400 border border-slate-500/20">Closed</span>
-                  )}
-                </div>
-                {selectedTrade.status === 'closed' ? (
-                  <span className={`text-xl font-bold font-mono ${selectedTrade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {selectedTrade.pnl >= 0 ? '+' : ''}${selectedTrade.pnl.toFixed(2)}
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-500">No realized P/L yet</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-4 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><Calendar size={12} /> {selectedTrade.date}</span>
-                <span className="flex items-center gap-1"><Clock size={12} /> {selectedTrade.timeframe}</span>
-                {selectedTrade.assetClass && <span className="capitalize bg-slate-800 px-2 py-0.5 rounded">{selectedTrade.assetClass}</span>}
-              </div>
-
-              <div className="glass-card p-3 space-y-2">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Prices</p>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Entry</span>
-                  <span className="font-mono text-slate-200">${Number(selectedTrade.entry).toFixed(4)}</span>
-                </div>
-                {selectedTrade.status === 'closed' && selectedTrade.exit && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Exit</span>
-                    <span className="font-mono text-slate-200">${Number(selectedTrade.exit).toFixed(4)}</span>
-                  </div>
-                )}
-                {selectedTrade.status === 'open' && (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Stop Loss</span>
-                      <span className="font-mono text-slate-200">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Take Profit</span>
-                      <span className="font-mono text-slate-200">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
-                    </div>
-                  </>
-                )}
-                {selectedTrade.status === 'closed' && (selectedTrade.stopLoss || selectedTrade.takeProfit) && (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Stop Loss</span>
-                      <span className="font-mono text-slate-200">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Take Profit</span>
-                      <span className="font-mono text-slate-200">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {(selectedTrade.lotSize || selectedTrade.quantity) && (
-                <div className="glass-card p-3">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Size</p>
-                  <p className="text-sm font-mono text-slate-200">
-                    {selectedTrade.lotSize ? `Lot Size: ${selectedTrade.lotSize}` : `Quantity: ${selectedTrade.quantity}`}
-                    {selectedTrade.leverage ? ` • ${selectedTrade.leverage}x Leverage` : ''}
-                  </p>
-                </div>
-              )}
-
-              {selectedTrade.status === 'open' && selectedTrade.tpPnl != null && (
-                <div className="glass-card p-3">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Projected Outcomes</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="text-[10px] text-emerald-500 uppercase tracking-wider">If TP Hits</p>
-                      <p className="text-lg font-bold font-mono text-emerald-400">+${selectedTrade.tpPnl.toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-red-500 uppercase tracking-wider">If SL Hits</p>
-                      <p className="text-lg font-bold font-mono text-red-400">${selectedTrade.slPnl.toFixed(2)}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedTrade.status === 'closed' && selectedTrade.result && (
-                <div className="glass-card p-3">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Result</p>
-                  <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
-                    selectedTrade.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
-                    selectedTrade.result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
-                  }`}>
-                    {selectedTrade.result}
-                  </span>
-                </div>
-              )}
-
-              {(selectedTrade.bias || selectedTrade.emotion || selectedTrade.strategy) && (
-                <div className="glass-card p-3 space-y-2">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Review</p>
-                  {selectedTrade.bias && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Bias</span>
-                      <span className="text-slate-200">{selectedTrade.bias}</span>
-                    </div>
-                  )}
-                  {selectedTrade.emotion && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Emotion</span>
-                      <span className="text-slate-200 capitalize">{selectedTrade.emotion}</span>
-                    </div>
-                  )}
-                  {selectedTrade.strategy && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Strategy</span>
-                      <span className="text-slate-200 capitalize">{selectedTrade.strategy}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selectedTrade.notes && (
-                <div className="glass-card p-3">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Notes</p>
-                  <p className="text-sm text-slate-300">{selectedTrade.notes}</p>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={() => { setSelectedTrade(null); setDeleteConfirmTrade(selectedTrade); }}
-                  className="flex-1 py-3 rounded-xl text-sm font-semibold bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/15 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Trash2 size={16} /> Delete Trade
-                </button>
-                <button
-                  onClick={() => setSelectedTrade(null)}
-                  className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Delete Confirmation Modal */}
@@ -1192,7 +1313,7 @@ export default function JournalScreen() {
                 Are you sure you want to delete the trade for <span className="font-semibold text-slate-200">{deleteConfirmTrade.asset}</span>
                 {' '}({deleteConfirmTrade.date}) with P&L of{' '}
                 <span className={`font-mono font-semibold ${deleteConfirmTrade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {deleteConfirmTrade.pnl >= 0 ? '+' : ''}${deleteConfirmTrade.pnl.toFixed(2)}
+                  {deleteConfirmTrade.pnl >= 0 ? '+' : ''}{formatMoney(deleteConfirmTrade.pnl)}
                 </span>?
               </p>
             </div>
