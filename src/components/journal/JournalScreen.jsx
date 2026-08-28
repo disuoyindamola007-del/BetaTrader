@@ -274,7 +274,35 @@ export default function JournalScreen() {
   const avgWin = winningTrades.length ? (winningTrades.reduce((a, t) => a + t.pnl, 0) / winningTrades.length) : 0;
   const avgLoss = losingTrades.length ? (losingTrades.reduce((a, t) => a + t.pnl, 0) / losingTrades.length) : 0;
 
-  const updateField = (field, value) => setForm(f => ({ ...f, [field]: value }));
+  // Map from form field names to their error keys for instant error clearing
+  const FIELD_ERROR_MAP = {
+    assetSymbol: { key: 'asset', step: 'step1' },
+    direction: { key: 'direction', step: 'step1' },
+    timeframe: { key: 'timeframe', step: 'step1' },
+    timeframeCustom: { key: 'timeframe', step: 'step1' },
+    entry: { key: 'entry', step: 'step2' },
+    exit: { key: 'exit', step: 'step2' },
+    quantity: { key: 'quantity', step: 'step2' },
+    lotSize: { key: 'quantity', step: 'step2' },
+    capital: { key: 'quantity', step: 'step2' },
+    stopLoss: { key: 'slError', step: 'step2' },
+    takeProfit: { key: 'tpError', step: 'step2' },
+    bias: { key: 'bias', step: 'step3' },
+    emotion: { key: 'emotion', step: 'step3' },
+    strategy: { key: 'strategy', step: 'step3' },
+  };
+
+  const updateField = (field, value) => {
+    setForm(f => ({ ...f, [field]: value }));
+    // Clear the corresponding error immediately when the user interacts with any field
+    const err = FIELD_ERROR_MAP[field];
+    if (err) {
+      setFormErrors(prev => ({
+        ...prev,
+        [err.step]: { ...prev[err.step], [err.key]: '' }
+      }));
+    }
+  };
 
   const resetWizard = () => {
     setForm(emptyForm);
@@ -826,10 +854,6 @@ export default function JournalScreen() {
                       // Always keep assetSymbol in sync with what's typed —
                       // user can proceed with manual entry even without selecting a suggestion
                       updateField('assetSymbol', val.trim().toUpperCase());
-                      // Bug 1 fix: clear the asset error immediately on any input
-                      if (formErrors.step1.asset) {
-                        setFormErrors(prev => ({ ...prev, step1: { ...prev.step1, asset: '' } }));
-                      }
                     }}
                     onFocus={() => setShowSearchResults(true)}
                     onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
