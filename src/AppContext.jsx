@@ -1,11 +1,25 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSettings, updateSetting } from './services/settingsService.js';
 import { getFavorites, toggleFavorite as toggleFavoriteInStorage } from './services/favoritesService.js';
 
 const AppContext = createContext();
 
 export function AppProvider({ children }) {
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('betatrader:activeTab') || 'home';
+    } catch {
+      return 'home';
+    }
+  });
+
+  // Persist activeTab to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('betatrader:activeTab', activeTab);
+    } catch { /* ignore */ }
+  }, [activeTab]);
+
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [selectedNews, setSelectedNews] = useState(null);
   const [selectedPulseMetric, setSelectedPulseMetric] = useState(null);
