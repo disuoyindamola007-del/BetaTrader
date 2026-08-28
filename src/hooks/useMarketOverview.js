@@ -1,5 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
 
+const BRIEFING_CACHE_KEY = 'betatrader:briefing:v1';
+const BRIEFING_CACHE_TTL_MS = 3 * 60 * 60_000; // 3 hours (middle of 2-4h window)
+
+function getCachedBriefing() {
+  try {
+    const raw = localStorage.getItem(BRIEFING_CACHE_KEY);
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    if (Date.now() > entry.expiresAt) {
+      localStorage.removeItem(BRIEFING_CACHE_KEY);
+      return null;
+    }
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedBriefing(data) {
+  try {
+    localStorage.setItem(BRIEFING_CACHE_KEY, JSON.stringify({
+      data,
+      expiresAt: Date.now() + BRIEFING_CACHE_TTL_MS,
+    }));
+  } catch {
+    // localStorage unavailable or full — non-fatal, just skip caching
+  }
+}
+
 async function requestOverview(type) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -37,13 +66,31 @@ export function useMarketOverview() {
     }
   }, []);
 
-  const loadBriefing = useCallback(async () => {
+  const loadBriefing = useCallback(async (forceRefresh = false) => {
+    // Check client-side cache first (skip if force refresh via retry button)
+    if (!forceRefresh) {
+      const cached = getCachedBriefing();
+      if (cached) {
+        setBriefing(cached.briefing || null);
+        setBriefingGeneratedAt(cached.generatedAt || null);
+        setBriefingError(null);
+        setBriefingLoading(false);
+        return;
+      }
+    }
+
     setBriefingLoading(true);
     try {
       const result = await requestOverview('briefing');
-      setBriefing(result.briefing || null);
-      setBriefingGeneratedAt(result.briefingGeneratedAt || null);
+      const briefingData = result.briefing || null;
+      const generatedAt = result.briefingGeneratedAt || null;
+      setBriefing(briefingData);
+      setBriefingGeneratedAt(generatedAt);
       setBriefingError(null);
+      // Cache the successful response client-side for next Home screen opens
+      if (briefingData && generatedAt) {
+        setCachedBriefing({ briefing: briefingData, generatedAt });
+      }
     } catch (err) {
       setBriefingError(err.name === 'AbortError' ? 'Daily AI Briefing took too long to load.' : err.message);
     } finally {
@@ -51,9 +98,13 @@ export function useMarketOverview() {
     }
   }, []);
 
+  const reloadBriefing = useCallback(() => {
+    loadBriefing(true);
+  }, [loadBriefing]);
+
   useEffect(() => {
     loadPulse();
-    loadBriefing();
+    loadBriefing(false);
   }, [loadPulse, loadBriefing]);
 
   return {
@@ -66,6 +117,6 @@ export function useMarketOverview() {
     pulseError,
     briefingError,
     reloadPulse: loadPulse,
-    reloadBriefing: loadBriefing,
+    reloadBriefing,
   };
 }
