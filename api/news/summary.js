@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   const article = clean(req.query.article, 4000);
   if (!headline) return res.status(400).json({ error: 'Headline is required' });
 
-  const cacheKey = `news:summary:${headline}`;
+  const cacheKey = `news:summary:v2:${source}:${headline}`;
   const cached = await get(cacheKey, SUMMARY_TTL_MS);
   if (cached) return res.status(200).json({ summary: cached, cached: true });
 
@@ -32,19 +32,41 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: MODEL,
-        temperature: 0.3,
-        max_completion_tokens: 180,
+        temperature: 0.25,
+        max_completion_tokens: 900,
+        response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: 'Summarize financial news accurately and concisely for a trading app. Plain prose, 2-3 sentences, no markdown and no financial advice.' },
-          { role: 'user', content: `Headline: ${headline}\nSource: ${source}\nArticle description: ${article}` },
+          {
+            role: 'system',
+            content: `You explain financial news clearly for retail traders. Return valid JSON only with this exact shape:
+{"overview":"","keyDevelopments":[""],"whyItMatters":"","marketImpact":"","whatToWatch":[""]}
+Write a detailed but readable breakdown. The overview should be 2-3 sentences. Include 3-5 key developments and 3-5 things to watch. Explain possible effects on relevant stocks, sectors, currencies, commodities, or crypto in the marketImpact field. Clearly describe uncertainty. Use only facts in the supplied headline and description; never invent figures, quotes, events, or outcomes. You may explain general market mechanisms, but label possible effects as possibilities rather than facts. No financial advice.`,
+          },
+          {
+            role: 'user',
+            content: `Headline: ${headline}\nSource: ${source || 'Unknown'}\nArticle description: ${article || 'No description was supplied. Explain only what can safely be understood from the headline and clearly state the limited context.'}`,
+          },
         ],
       }),
     });
     if (response.status === 429) return res.status(429).json({ error: 'AI summary is temporarily rate limited', rateLimited: true });
     if (!response.ok) throw new Error(`Groq summary failed: ${response.status}`);
     const data = await response.json();
-    const summary = data?.choices?.[0]?.message?.content?.trim();
-    if (!summary) throw new Error('Empty AI summary');
+    const rawSummary = data?.choices?.[0]?.message?.content?.trim();
+    if (!rawSummary) throw new Error('Empty AI summary');
+
+    let summary;
+    try {
+      summary = JSON.parse(rawSummary);
+    } catch {
+      throw new Error('Invalid AI summary format');
+    }
+    const valid = summary?.overview
+      && Array.isArray(summary.keyDevelopments)
+      && summary?.whyItMatters
+      && summary?.marketImpact
+      && Array.isArray(summary.whatToWatch);
+    if (!valid) throw new Error('Incomplete AI summary');
 
     await set(cacheKey, summary, SUMMARY_TTL_MS);
     return res.status(200).json({ summary, cached: false });
