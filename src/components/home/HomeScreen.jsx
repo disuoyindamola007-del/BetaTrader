@@ -148,7 +148,12 @@ export default function HomeScreen() {
             <span className="text-lg">🤖</span>
             <span className="text-[11px] font-bold tracking-[0.15em] text-emerald-400 uppercase">Daily AI Briefing</span>
           </div>
-          {briefingGeneratedAt && <span className="text-[9px] text-slate-500">Live • {new Date(briefingGeneratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+          <div className="flex items-center gap-2">
+            {briefingGeneratedAt && <span className="text-[9px] text-slate-500">Live • {new Date(briefingGeneratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+            <button onClick={reloadBriefing} disabled={briefingLoading} className="p-1 rounded-full hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors disabled:opacity-40" aria-label="Refresh briefing" title="Refresh briefing">
+              <RefreshCw size={12} className={`text-emerald-400 ${briefingLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
         {briefingLoading && <div className="py-8 flex justify-center"><RefreshCw size={20} className="text-emerald-400 animate-spin" /></div>}
         {!briefingLoading && liveBriefing && <>
