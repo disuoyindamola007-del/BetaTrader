@@ -3,6 +3,7 @@ import BottomNav from './components/shared/BottomNav.jsx';
 import HomeScreen from './components/home/HomeScreen.jsx';
 import NewsScreen from './components/home/NewsScreen.jsx';
 import NewsDetail from './components/home/NewsDetail.jsx';
+import MarketPulseDetail from './components/home/MarketPulseDetail.jsx';
 import MarketsScreen from './components/markets/MarketsScreen.jsx';
 import AssetDetail from './components/markets/AssetDetail.jsx';
 import JournalScreen from './components/journal/JournalScreen.jsx';
@@ -10,10 +11,14 @@ import AlertsScreen from './components/alerts/AlertsScreen.jsx';
 import ProfileScreen from './components/profile/ProfileScreen.jsx';
 
 function AppContent() {
-  const { activeTab, selectedAsset, selectedNews } = useApp();
+  const { activeTab, selectedAsset, selectedNews, selectedPulseMetric } = useApp();
 
   const renderScreen = () => {
-    if (activeTab === 'home') return selectedNews ? <NewsDetail article={selectedNews} /> : <HomeScreen />;
+    if (activeTab === 'home') {
+      if (selectedNews) return <NewsDetail article={selectedNews} />;
+      if (selectedPulseMetric) return <MarketPulseDetail metric={selectedPulseMetric} />;
+      return <HomeScreen />;
+    }
     if (activeTab === 'news') return <NewsScreen />;
     if (activeTab === 'markets') {
       return selectedAsset ? <AssetDetail /> : <MarketsScreen />;

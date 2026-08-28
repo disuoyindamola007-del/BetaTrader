@@ -12,10 +12,9 @@ import { useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarke
 import { getCategory } from '../../services/marketDataService.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
-import MarketPulseExplainer from './MarketPulseExplainer.jsx';
 
 export default function HomeScreen() {
-  const { navigateToAsset, navigateToNews, setActiveTab, openMarketSearch, userName } = useApp();
+  const { navigateToAsset, navigateToNews, navigateToPulseMetric, setActiveTab, openMarketSearch, userName } = useApp();
   const { news: liveNews, isLoading: newsLoading, error: newsError } = useNews();
   const {
     pulse: livePulse, briefing: liveBriefing, briefingGeneratedAt,
@@ -23,7 +22,6 @@ export default function HomeScreen() {
     reloadPulse, reloadBriefing,
   } = useMarketOverview();
   const [briefingExpanded, setBriefingExpanded] = useState(false);
-  const [selectedPulseMetric, setSelectedPulseMetric] = useState(null);
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
@@ -179,7 +177,7 @@ export default function HomeScreen() {
         {pulseLoading && <div className="glass-card p-5 flex justify-center"><RefreshCw size={18} className="text-emerald-400 animate-spin" /></div>}
         {!pulseLoading && livePulse.length > 0 && <div className="grid grid-cols-3 gap-2">
           {livePulse.map((item) => (
-            <button key={item.label} onClick={() => setSelectedPulseMetric(item)} className="glass-card p-3 text-center hover:border-emerald-500/30 active:scale-[0.98] transition-all" aria-label={`Explain ${item.label}`}>
+            <button key={item.label} onClick={() => navigateToPulseMetric(item)} className="glass-card p-3 text-center hover:border-emerald-500/30 active:scale-[0.98] transition-all" aria-label={`Open ${item.label} details`}>
               <p className="text-[10px] text-slate-500 mb-1">{item.label}</p>
               <p className="text-base font-bold font-mono text-slate-100">{item.value}</p>
               <p className={`text-[10px] font-medium ${item.color === 'emerald' ? 'text-emerald-400' : item.color === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>{item.sublabel}</p>
@@ -278,7 +276,6 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      <MarketPulseExplainer metric={selectedPulseMetric} onClose={() => setSelectedPulseMetric(null)} />
     </div>
   );
 }
