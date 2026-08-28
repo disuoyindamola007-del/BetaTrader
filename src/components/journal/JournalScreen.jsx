@@ -46,6 +46,7 @@ const emptyForm = {
   assetSymbol: '',
   assetName: '',
   assetClass: '',
+  status: 'closed',
   direction: '',
   timeframe: '',
   timeframeCustom: '',
@@ -63,16 +64,24 @@ const emptyForm = {
 };
 
 const step1Errors = { asset: '', direction: '', timeframe: '' };
-const step2Errors = { entry: '', exit: '', quantity: '' };
+const step2Errors = { entry: '', exit: '', quantity: '', slError: '', tpError: '' };
 const step3Errors = { bias: '', emotion: '', strategy: '' };
 
 // Calculate P&L from trade data
-function calculatePnL(trade) {
+// Realized P/L for closed trades
+function calculateClosedPnL(trade) {
   const entry = Number(trade.entry) || 0;
   const exit = Number(trade.exit) || 0;
   const qty = Number(trade.quantity) || Number(trade.lotSize) || 0;
   if (!entry || !exit || !qty) return 0;
   const gross = trade.direction === 'sell' ? (entry - exit) * qty : (exit - entry) * qty;
+  return Math.round(gross * 100) / 100;
+}
+
+// Projected P/L for open trades (substitute a target price for exit)
+function calculateProjectedPnL(entry, targetPrice, qty, direction) {
+  if (!entry || !targetPrice || !qty) return 0;
+  const gross = direction === 'sell' ? (entry - targetPrice) * qty : (targetPrice - entry) * qty;
   return Math.round(gross * 100) / 100;
 }
 
@@ -103,20 +112,33 @@ export default function JournalScreen() {
 
   // Compute P&L and result for each trade (single source of truth for all tabs)
   const tradesWithPnL = trades.map(t => {
-    const pnl = calculatePnL(t);
-    return { ...t, pnl, result: deriveResult(pnl) };
+    if (t.status === 'open') {
+      const entry = Number(t.entry) || 0;
+      const qty = Number(t.quantity) || Number(t.lotSize) || 0;
+      const tpPnl = calculateProjectedPnL(entry, Number(t.takeProfit), qty, t.direction);
+      const slPnl = calculateProjectedPnL(entry, Number(t.stopLoss), qty, t.direction);
+      return { ...t, tpPnl, slPnl, pnl: 0, result: null };
+    } else {
+      const pnl = calculateClosedPnL(t);
+      return { ...t, pnl, result: deriveResult(pnl) };
+    }
   });
 
+  // Separate closed and open trades
+  const closedTrades = tradesWithPnL.filter(t => t.status !== 'open');
+  const openTrades = tradesWithPnL.filter(t => t.status === 'open');
+
+  // Performance stats computed ONLY from closed trades
   const stats = {
-    totalTrades: tradesWithPnL.length,
-    wins: tradesWithPnL.filter(t => t.result === 'win').length,
-    losses: tradesWithPnL.filter(t => t.result === 'loss').length,
-    winRate: tradesWithPnL.length ? ((tradesWithPnL.filter(t => t.result === 'win').length / tradesWithPnL.length) * 100).toFixed(1) : 0,
-    totalPL: tradesWithPnL.reduce((acc, t) => acc + (t.pnl || 0), 0),
+    totalTrades: closedTrades.length,
+    wins: closedTrades.filter(t => t.result === 'win').length,
+    losses: closedTrades.filter(t => t.result === 'loss').length,
+    winRate: closedTrades.length ? ((closedTrades.filter(t => t.result === 'win').length / closedTrades.length) * 100).toFixed(1) : 0,
+    totalPL: closedTrades.reduce((acc, t) => acc + (t.pnl || 0), 0),
   };
 
-  const losingTrades = tradesWithPnL.filter(t => t.pnl < 0);
-  const winningTrades = tradesWithPnL.filter(t => t.pnl > 0);
+  const losingTrades = closedTrades.filter(t => t.pnl < 0);
+  const winningTrades = closedTrades.filter(t => t.pnl > 0);
   const bestTrade = winningTrades.length ? winningTrades.reduce((best, t) => (t.pnl > best.pnl ? t : best), winningTrades[0]) : null;
   const worstTrade = losingTrades.length ? losingTrades.reduce((worst, t) => (t.pnl < worst.pnl ? t : worst), losingTrades[0]) : null;
   const avgWin = winningTrades.length ? (winningTrades.reduce((a, t) => a + t.pnl, 0) / winningTrades.length).toFixed(2) : 0;
@@ -143,21 +165,47 @@ export default function JournalScreen() {
   };
 
   const handleContinue = () => {
-    // Step 2 validation — then advance to Step 3 (do NOT save yet)
     const config = getFieldConfig(resolveAssetClass(), form.assetSymbol);
     const errors = { ...step2Errors };
+
+    // Entry and quantity always required
     if (form.entry === '' || Number.isNaN(Number(form.entry))) errors.entry = 'Enter entry price.';
-    if (form.exit === '' || Number.isNaN(Number(form.exit))) errors.exit = 'Enter exit price.';
     if (form[config.quantityKey] === '' || Number.isNaN(Number(form[config.quantityKey]))) {
       errors.quantity = `Enter ${config.quantityLabel.toLowerCase()}.`;
     }
+
+    if (form.status === 'closed') {
+      // Closed trade: exit price required, SL/TP not shown
+      if (form.exit === '' || Number.isNaN(Number(form.exit))) errors.exit = 'Enter exit price.';
+      errors.slError = '';
+      errors.tpError = '';
+    } else {
+      // Open trade: SL and TP required, exit not shown
+      errors.exit = '';
+      if (form.stopLoss === '' || Number.isNaN(Number(form.stopLoss))) errors.slError = 'Enter stop loss.';
+      if (form.takeProfit === '' || Number.isNaN(Number(form.takeProfit))) errors.tpError = 'Enter take profit.';
+
+      // Direction-aware validation (only when both values present)
+      const entry = Number(form.entry);
+      const sl = Number(form.stopLoss);
+      const tp = Number(form.takeProfit);
+      if (form.direction && entry && sl && tp) {
+        if (form.direction === 'buy') {
+          if (sl >= entry) errors.slError = 'Stop loss must be below entry for long positions.';
+          if (tp <= entry) errors.tpError = 'Take profit must be above entry for long positions.';
+        } else {
+          if (sl <= entry) errors.slError = 'Stop loss must be above entry for short positions.';
+          if (tp >= entry) errors.tpError = 'Take profit must be below entry for short positions.';
+        }
+      }
+    }
+
     setFormErrors(prev => ({ ...prev, step2: errors }));
     if (Object.values(errors).some(e => e)) return;
     setLogStep(3);
   };
 
   const handleSave = () => {
-    // Step 3 validation — then save the trade
     const errors = { ...step3Errors };
     if (!form.bias) errors.bias = 'Select market bias.';
     if (!form.emotion) errors.emotion = 'Select emotional state.';
@@ -172,14 +220,15 @@ export default function JournalScreen() {
       asset: form.assetSymbol.trim().toUpperCase(),
       assetName: form.assetName || form.assetSymbol.trim().toUpperCase(),
       assetClass,
+      status: form.status,
       direction: form.direction,
       timeframe: form.timeframe === 'custom' ? form.timeframeCustom.trim() : form.timeframe,
       entry: Number(form.entry) || null,
-      exit: Number(form.exit) || null,
+      exit: form.status === 'closed' ? (Number(form.exit) || null) : null,
       [qtyKey]: Number(form[qtyKey]) || null,
       leverage: config.hasLeverage ? (Number(form.leverage) || null) : null,
-      stopLoss: form.stopLoss === '' ? null : Number(form.stopLoss),
-      takeProfit: form.takeProfit === '' ? null : Number(form.takeProfit),
+      stopLoss: form.status === 'open' ? (Number(form.stopLoss) || null) : null,
+      takeProfit: form.status === 'open' ? (Number(form.takeProfit) || null) : null,
       bias: form.bias,
       emotion: form.emotion,
       strategy: form.strategy,
@@ -213,6 +262,35 @@ export default function JournalScreen() {
   const resolveAssetClass = () => form.assetClass || 'forex';
 
   const fieldConfig = getFieldConfig(resolveAssetClass(), form.assetSymbol);
+
+  // Validate SL/TP on blur for open trades
+  const handleSlBlur = () => {
+    if (form.status !== 'open' || !form.direction) return;
+    const entry = Number(form.entry);
+    const sl = Number(form.stopLoss);
+    if (!entry || !sl) return;
+    const errors = { ...formErrors.step2 };
+    if (form.direction === 'buy') {
+      errors.slError = sl >= entry ? 'Stop loss must be below entry for long positions.' : '';
+    } else {
+      errors.slError = sl <= entry ? 'Stop loss must be above entry for short positions.' : '';
+    }
+    setFormErrors(prev => ({ ...prev, step2: errors }));
+  };
+
+  const handleTpBlur = () => {
+    if (form.status !== 'open' || !form.direction) return;
+    const entry = Number(form.entry);
+    const tp = Number(form.takeProfit);
+    if (!entry || !tp) return;
+    const errors = { ...formErrors.step2 };
+    if (form.direction === 'buy') {
+      errors.tpError = tp <= entry ? 'Take profit must be above entry for long positions.' : '';
+    } else {
+      errors.tpError = tp >= entry ? 'Take profit must be below entry for short positions.' : '';
+    }
+    setFormErrors(prev => ({ ...prev, step2: errors }));
+  };
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
@@ -255,21 +333,19 @@ export default function JournalScreen() {
           <div className="grid grid-cols-2 gap-2 mb-4">
             <div className="glass-card p-3">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total Trades</p>
-              <p className="text-xl font-bold font-mono">{stats.totalTrades}</p>
+              <p className="text-xl font-bold font-mono">{tradesWithPnL.length}</p>
+            </div>
+            <div className="glass-card p-3">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Open</p>
+              <p className="text-xl font-bold font-mono text-amber-400">{openTrades.length}</p>
+            </div>
+            <div className="glass-card p-3">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Closed</p>
+              <p className="text-xl font-bold font-mono">{closedTrades.length}</p>
             </div>
             <div className="glass-card p-3">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider">Win Rate</p>
               <p className="text-xl font-bold font-mono text-emerald-400">{stats.winRate}%</p>
-            </div>
-            <div className="glass-card p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total P&L</p>
-              <p className={`text-xl font-bold font-mono ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {stats.totalPL >= 0 ? '+' : ''}${stats.totalPL.toFixed(2)}
-              </p>
-            </div>
-            <div className="glass-card p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">W / L</p>
-              <p className="text-xl font-bold font-mono">{stats.wins} / {stats.losses}</p>
             </div>
           </div>
 
@@ -296,11 +372,23 @@ export default function JournalScreen() {
                       {trade.direction}
                     </span>
                     <span className="text-[10px] text-slate-500">{trade.timeframe}</span>
+                    {trade.status === 'open' ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20">Open</span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-500/15 text-slate-400 border border-slate-500/20">Closed</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-sm font-bold font-mono ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
-                    </span>
+                    {trade.status === 'open' ? (
+                      <span className="text-xs text-slate-500 text-right">
+                        TP: <span className="text-emerald-400 font-mono">+${trade.tpPnl?.toFixed(2)}</span>{' '}
+                        SL: <span className="text-red-400 font-mono">${trade.slPnl?.toFixed(2)}</span>
+                      </span>
+                    ) : (
+                      <span className={`text-sm font-bold font-mono ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
+                      </span>
+                    )}
                     <ChevronRight size={14} className="text-slate-600" />
                   </div>
                 </button>
@@ -471,6 +559,34 @@ export default function JournalScreen() {
           {logStep === 2 && (
             <div className="flex flex-col gap-5">
               <p className="text-sm font-semibold text-slate-300">Step 2: Entry & Exit</p>
+
+              {/* Status Toggle */}
+              <div>
+                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Trade Status</label>
+                <div className="flex gap-1 bg-slate-800 p-1 rounded-xl">
+                  <button
+                    onClick={() => { updateField('status', 'closed'); updateField('exit', ''); updateField('stopLoss', ''); updateField('takeProfit', ''); }}
+                    className={`flex-1 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      form.status === 'closed'
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'text-slate-400 hover:text-slate-300'
+                    }`}
+                  >
+                    Closed
+                  </button>
+                  <button
+                    onClick={() => { updateField('status', 'open'); updateField('exit', ''); updateField('stopLoss', ''); updateField('takeProfit', ''); }}
+                    className={`flex-1 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      form.status === 'open'
+                        ? 'bg-amber-500 text-slate-950'
+                        : 'text-slate-400 hover:text-slate-300'
+                    }`}
+                  >
+                    Open
+                  </button>
+                </div>
+              </div>
+
               {form.assetSymbol && (
                 <p className="text-xs text-slate-500">
                   {form.assetSymbol} • {form.direction === 'buy' ? 'Long' : 'Short'} • {form.timeframe === 'custom' ? form.timeframeCustom : form.timeframe}
@@ -490,17 +606,19 @@ export default function JournalScreen() {
                   />
                   {formErrors.step2.entry && <p className="text-xs text-red-400 mt-1">{formErrors.step2.entry}</p>}
                 </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Exit Price *</label>
-                  <input
-                    type="number"
-                    placeholder="1.0895"
-                    value={form.exit}
-                    onChange={e => updateField('exit', e.target.value)}
-                    className="w-full input-field"
-                  />
-                  {formErrors.step2.exit && <p className="text-xs text-red-400 mt-1">{formErrors.step2.exit}</p>}
-                </div>
+                {form.status === 'closed' && (
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Exit Price *</label>
+                    <input
+                      type="number"
+                      placeholder="1.0895"
+                      value={form.exit}
+                      onChange={e => updateField('exit', e.target.value)}
+                      className="w-full input-field"
+                    />
+                    {formErrors.step2.exit && <p className="text-xs text-red-400 mt-1">{formErrors.step2.exit}</p>}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -531,28 +649,34 @@ export default function JournalScreen() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Stop Loss</label>
-                  <input
-                    type="number"
-                    placeholder="1.0820"
-                    value={form.stopLoss}
-                    onChange={e => updateField('stopLoss', e.target.value)}
-                    className="w-full input-field"
-                  />
+              {form.status === 'open' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Stop Loss *</label>
+                    <input
+                      type="number"
+                      placeholder="1.0820"
+                      value={form.stopLoss}
+                      onChange={e => updateField('stopLoss', e.target.value)}
+                      onBlur={handleSlBlur}
+                      className="w-full input-field"
+                    />
+                    {formErrors.step2.slError && <p className="text-xs text-red-400 mt-1">{formErrors.step2.slError}</p>}
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Take Profit *</label>
+                    <input
+                      type="number"
+                      placeholder="1.0910"
+                      value={form.takeProfit}
+                      onChange={e => updateField('takeProfit', e.target.value)}
+                      onBlur={handleTpBlur}
+                      className="w-full input-field"
+                    />
+                    {formErrors.step2.tpError && <p className="text-xs text-red-400 mt-1">{formErrors.step2.tpError}</p>}
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Take Profit</label>
-                  <input
-                    type="number"
-                    placeholder="1.0910"
-                    value={form.takeProfit}
-                    onChange={e => updateField('takeProfit', e.target.value)}
-                    className="w-full input-field"
-                  />
-                </div>
-              </div>
+              )}
 
               <div className="flex gap-2 mt-2">
                 <button onClick={() => setLogStep(1)} className="flex-1 btn-secondary">Back</button>
@@ -563,33 +687,68 @@ export default function JournalScreen() {
 
           {/* STEP 3 */}
           {logStep === 3 && (() => {
-            const pnl = calculatePnL(form);
-            const result = deriveResult(pnl);
+            const isClosed = form.status === 'closed';
+            const closedPnl = isClosed ? calculateClosedPnL(form) : 0;
+            const entry = Number(form.entry) || 0;
+            const qty = Number(form.quantity) || Number(form.lotSize) || 0;
+            const tpPnl = calculateProjectedPnL(entry, Number(form.takeProfit), qty, form.direction);
+            const slPnl = calculateProjectedPnL(entry, Number(form.stopLoss), qty, form.direction);
+            const result = isClosed ? deriveResult(closedPnl) : null;
             return (
               <div className="flex flex-col gap-5">
                 <p className="text-sm font-semibold text-slate-300">Step 3: Result & Review</p>
 
-                {/* Auto-calculated P&L display */}
-                <div className="glass-card bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Calculated P&L</p>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-2xl font-bold font-mono" style={{ color: pnl >= 0 ? '#10b981' : '#ef4444' }}>
-                        {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Entry: ${Number(form.entry).toFixed(4)} → Exit: ${Number(form.exit).toFixed(4)} • {fieldConfig.quantityLabel}: {form[fieldConfig.quantityKey]}
-                        {fieldConfig.hasLeverage && form.leverage ? ` • ${form.leverage}x` : ''}
-                      </p>
+                {isClosed ? (
+                  // Closed trade: realized P/L
+                  <div className="glass-card bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Realized P/L</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-2xl font-bold font-mono" style={{ color: closedPnl >= 0 ? '#10b981' : '#ef4444' }}>
+                          {closedPnl >= 0 ? '+' : ''}${closedPnl.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Entry: ${entry.toFixed(4)} → Exit: ${Number(form.exit).toFixed(4)} • {fieldConfig.quantityLabel}: {form[fieldConfig.quantityKey]}
+                          {fieldConfig.hasLeverage && form.leverage ? ` • ${form.leverage}x` : ''}
+                        </p>
+                      </div>
+                      <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
+                        result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
+                        result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
+                      }`}>
+                        {result}
+                      </span>
                     </div>
-                    <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
-                      result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
-                      result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
-                    }`}>
-                      {result}
-                    </span>
                   </div>
-                </div>
+                ) : (
+                  // Open trade: projected outcomes
+                  <div className="glass-card bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Projected Outcomes</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-emerald-500 uppercase tracking-wider mb-1">If TP Hits</p>
+                        <p className="text-xl font-bold font-mono text-emerald-400">
+                          {tpPnl >= 0 ? '+' : ''}${tpPnl.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Entry: ${entry.toFixed(4)} → TP: ${Number(form.takeProfit).toFixed(4)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-red-500 uppercase tracking-wider mb-1">If SL Hits</p>
+                        <p className="text-xl font-bold font-mono text-red-400">
+                          {slPnl >= 0 ? '+' : ''}${slPnl.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Entry: ${entry.toFixed(4)} → SL: ${Number(form.stopLoss).toFixed(4)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-slate-600 mt-2 text-center">
+                      {fieldConfig.quantityLabel}: {form[fieldConfig.quantityKey]}{fieldConfig.hasLeverage && form.leverage ? ` • ${form.leverage}x` : ''}
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Market Bias *</label>
@@ -643,14 +802,25 @@ export default function JournalScreen() {
 
       {/* PERFORMANCE */}
       {activeTab === 'performance' && (
-        tradesWithPnL.length === 0 ? (
+        closedTrades.length === 0 ? (
           <div className="glass-card p-8 text-center">
             <BarChart3 size={48} className="mx-auto text-slate-700 mb-3" />
             <p className="text-sm font-semibold text-slate-300 mb-1">No performance data yet</p>
-            <p className="text-xs text-slate-500">Log closed trades to see your win rate, P&L, and more.</p>
+            <p className="text-xs text-slate-500">
+              {openTrades.length > 0
+                ? `You have ${openTrades.length} open position${openTrades.length > 1 ? 's' : ''}. Close them to see performance stats.`
+                : 'Log closed trades to see your win rate, P&L, and more.'}
+            </p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
+            {openTrades.length > 0 && (
+              <div className="glass-card p-3 border border-amber-500/20 bg-amber-500/5">
+                <p className="text-[10px] text-amber-500 uppercase tracking-wider mb-1">Open Positions</p>
+                <p className="text-lg font-bold font-mono text-amber-400">{openTrades.length}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Not included in stats below until closed</p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div className="glass-card p-3">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total P&L</p>
@@ -692,7 +862,7 @@ export default function JournalScreen() {
                 <p className="text-sm font-semibold text-emerald-400">No losses yet 🎉</p>
               </div>
             )}
-            <p className="text-[10px] text-slate-600 text-center mt-2">P&L auto-calculated from entry, exit, and quantity. Charts coming in a future update.</p>
+            <p className="text-[10px] text-slate-600 text-center mt-2">Stats computed from closed trades only. Charts coming in a future update.</p>
           </div>
         )
       )}
@@ -717,10 +887,19 @@ export default function JournalScreen() {
                   }`}>
                     {selectedTrade.direction}
                   </span>
+                  {selectedTrade.status === 'open' ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20">Open</span>
+                  ) : (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-slate-500/15 text-slate-400 border border-slate-500/20">Closed</span>
+                  )}
                 </div>
-                <span className={`text-xl font-bold font-mono ${selectedTrade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {selectedTrade.pnl >= 0 ? '+' : ''}${selectedTrade.pnl.toFixed(2)}
-                </span>
+                {selectedTrade.status === 'closed' ? (
+                  <span className={`text-xl font-bold font-mono ${selectedTrade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {selectedTrade.pnl >= 0 ? '+' : ''}${selectedTrade.pnl.toFixed(2)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-500">No realized P/L yet</span>
+                )}
               </div>
 
               <div className="flex items-center gap-4 text-xs text-slate-500">
@@ -735,11 +914,25 @@ export default function JournalScreen() {
                   <span className="text-slate-400">Entry</span>
                   <span className="font-mono text-slate-200">${Number(selectedTrade.entry).toFixed(4)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Exit</span>
-                  <span className="font-mono text-slate-200">${Number(selectedTrade.exit).toFixed(4)}</span>
-                </div>
-                {(selectedTrade.stopLoss || selectedTrade.takeProfit) && (
+                {selectedTrade.status === 'closed' && selectedTrade.exit && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Exit</span>
+                    <span className="font-mono text-slate-200">${Number(selectedTrade.exit).toFixed(4)}</span>
+                  </div>
+                )}
+                {selectedTrade.status === 'open' && (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Stop Loss</span>
+                      <span className="font-mono text-slate-200">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Take Profit</span>
+                      <span className="font-mono text-slate-200">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
+                    </div>
+                  </>
+                )}
+                {selectedTrade.status === 'closed' && (selectedTrade.stopLoss || selectedTrade.takeProfit) && (
                   <>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-400">Stop Loss</span>
@@ -763,15 +956,33 @@ export default function JournalScreen() {
                 </div>
               )}
 
-              <div className="glass-card p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Result</p>
-                <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
-                  selectedTrade.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
-                  selectedTrade.result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
-                }`}>
-                  {selectedTrade.result}
-                </span>
-              </div>
+              {selectedTrade.status === 'open' && selectedTrade.tpPnl != null && (
+                <div className="glass-card p-3">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Projected Outcomes</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] text-emerald-500 uppercase tracking-wider">If TP Hits</p>
+                      <p className="text-lg font-bold font-mono text-emerald-400">+${selectedTrade.tpPnl.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-red-500 uppercase tracking-wider">If SL Hits</p>
+                      <p className="text-lg font-bold font-mono text-red-400">${selectedTrade.slPnl.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedTrade.status === 'closed' && selectedTrade.result && (
+                <div className="glass-card p-3">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Result</p>
+                  <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
+                    selectedTrade.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
+                    selectedTrade.result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
+                  }`}>
+                    {selectedTrade.result}
+                  </span>
+                </div>
+              )}
 
               {(selectedTrade.bias || selectedTrade.emotion || selectedTrade.strategy) && (
                 <div className="glass-card p-3 space-y-2">
