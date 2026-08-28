@@ -17,7 +17,11 @@ import MarketPulseExplainer from './MarketPulseExplainer.jsx';
 export default function HomeScreen() {
   const { navigateToAsset, navigateToNews, setActiveTab, openMarketSearch, userName } = useApp();
   const { news: liveNews, isLoading: newsLoading, error: newsError } = useNews();
-  const { data: marketOverview, isLoading: overviewLoading, error: overviewError, reload: reloadOverview } = useMarketOverview();
+  const {
+    pulse: livePulse, briefing: liveBriefing, briefingGeneratedAt,
+    pulseLoading, briefingLoading, pulseError, briefingError,
+    reloadPulse, reloadBriefing,
+  } = useMarketOverview();
   const [briefingExpanded, setBriefingExpanded] = useState(false);
   const [selectedPulseMetric, setSelectedPulseMetric] = useState(null);
   const [greeting, setGreeting] = useState('');
@@ -119,8 +123,6 @@ export default function HomeScreen() {
   const liveTrending = Object.keys(livePrices).length > 0 ? getLiveTrending() : trending;
 
   const displayedNews = liveNews.length > 0 ? liveNews : [];
-  const livePulse = marketOverview?.pulse || [];
-  const liveBriefing = marketOverview?.briefing;
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
@@ -148,10 +150,10 @@ export default function HomeScreen() {
             <span className="text-lg">🤖</span>
             <span className="text-[11px] font-bold tracking-[0.15em] text-emerald-400 uppercase">Daily AI Briefing</span>
           </div>
-          {marketOverview?.briefingGeneratedAt && <span className="text-[9px] text-slate-500">Live • {new Date(marketOverview.briefingGeneratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+          {briefingGeneratedAt && <span className="text-[9px] text-slate-500">Live • {new Date(briefingGeneratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
         </div>
-        {overviewLoading && <div className="py-8 flex justify-center"><RefreshCw size={20} className="text-emerald-400 animate-spin" /></div>}
-        {!overviewLoading && liveBriefing && <>
+        {briefingLoading && <div className="py-8 flex justify-center"><RefreshCw size={20} className="text-emerald-400 animate-spin" /></div>}
+        {!briefingLoading && liveBriefing && <>
           <div className="flex items-center gap-3 mb-3">
             <span className="text-sm font-semibold text-slate-100">{liveBriefing.sentiment}</span>
             <span className="badge-bullish">{liveBriefing.confidence}% Conf</span>
@@ -169,13 +171,13 @@ export default function HomeScreen() {
             {briefingExpanded ? 'Show Less' : 'Read Full Analysis'} <ArrowRight size={14} className={briefingExpanded ? '-rotate-90' : 'rotate-90'} />
           </button>
         </>}
-        {!overviewLoading && !liveBriefing && <div className="py-4 text-center"><p className="text-sm text-amber-400 mb-3">{marketOverview?.briefingError || overviewError || 'Daily AI Briefing is temporarily unavailable.'}</p><button onClick={reloadOverview} className="text-xs text-emerald-400">Try Again</button></div>}
+        {!briefingLoading && !liveBriefing && <div className="py-4 text-center"><p className="text-sm text-amber-400 mb-3">{briefingError || 'Daily AI Briefing is temporarily unavailable.'}</p><button onClick={reloadBriefing} className="text-xs text-emerald-400">Try Again</button></div>}
       </div>
 
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3"><span className="section-title">Market Pulse</span>{livePulse.length > 0 && <span className="text-[10px] text-emerald-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Live</span>}</div>
-        {overviewLoading && <div className="glass-card p-5 flex justify-center"><RefreshCw size={18} className="text-emerald-400 animate-spin" /></div>}
-        {!overviewLoading && livePulse.length > 0 && <div className="grid grid-cols-3 gap-2">
+        {pulseLoading && <div className="glass-card p-5 flex justify-center"><RefreshCw size={18} className="text-emerald-400 animate-spin" /></div>}
+        {!pulseLoading && livePulse.length > 0 && <div className="grid grid-cols-3 gap-2">
           {livePulse.map((item) => (
             <button key={item.label} onClick={() => setSelectedPulseMetric(item)} className="glass-card p-3 text-center hover:border-emerald-500/30 active:scale-[0.98] transition-all" aria-label={`Explain ${item.label}`}>
               <p className="text-[10px] text-slate-500 mb-1">{item.label}</p>
@@ -185,7 +187,7 @@ export default function HomeScreen() {
             </button>
           ))}
         </div>}
-        {!overviewLoading && livePulse.length === 0 && <div className="glass-card p-4 text-center"><p className="text-sm text-amber-400 mb-2">{overviewError || 'Live Market Pulse is temporarily unavailable.'}</p><button onClick={reloadOverview} className="text-xs text-emerald-400">Try Again</button></div>}
+        {!pulseLoading && livePulse.length === 0 && <div className="glass-card p-4 text-center"><p className="text-sm text-amber-400 mb-2">{pulseError || 'Live Market Pulse is temporarily unavailable.'}</p><button onClick={reloadPulse} className="text-xs text-emerald-400">Try Again</button></div>}
       </div>
 
       <div className="mb-5">

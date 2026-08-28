@@ -152,7 +152,7 @@ async function loadBriefing(pulseData) {
     body: JSON.stringify({
       model: GROQ_MODEL,
       temperature: 0.2,
-      max_completion_tokens: 700,
+      max_completion_tokens: 1200,
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -167,7 +167,11 @@ async function loadBriefing(pulseData) {
     }),
   });
   if (response.status === 429) throw new Error('AI briefing is temporarily rate limited');
-  if (!response.ok) throw new Error(`Groq briefing failed: ${response.status}`);
+  if (!response.ok) {
+    const body = await response.text();
+    console.error('Groq briefing provider error:', response.status, body.slice(0, 300));
+    throw new Error(`Groq briefing failed: ${response.status}`);
+  }
   const data = await response.json();
   const briefing = JSON.parse(data?.choices?.[0]?.message?.content || '{}');
   const valid = briefing?.sentiment && Number.isFinite(Number(briefing.confidence))
@@ -189,22 +193,24 @@ export default async function handler(req, res) {
 
   try {
     const pulseData = await loadPulse();
-    let briefing = null;
-    let briefingError = null;
+    const type = req.query.type === 'briefing' ? 'briefing' : 'pulse';
+
+    if (type === 'pulse') {
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=3600');
+      return res.status(200).json({ pulse: pulseData.pulse, pulseGeneratedAt: pulseData.generatedAt });
+    }
+
     try {
-      briefing = await loadBriefing(pulseData);
+      const briefing = await loadBriefing(pulseData);
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=3600');
+      return res.status(200).json({
+        briefing: briefing.briefing,
+        briefingGeneratedAt: briefing.generatedAt,
+      });
     } catch (error) {
       console.error('Market briefing error:', error.message);
-      briefingError = 'Daily AI Briefing is temporarily unavailable';
+      return res.status(503).json({ error: 'Daily AI Briefing is temporarily unavailable' });
     }
-    res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=3600');
-    return res.status(200).json({
-      pulse: pulseData.pulse,
-      pulseGeneratedAt: pulseData.generatedAt,
-      briefing: briefing?.briefing || null,
-      briefingGeneratedAt: briefing?.generatedAt || null,
-      briefingError,
-    });
   } catch (error) {
     console.error('Market overview error:', error.message);
     return res.status(502).json({ error: 'Live market overview is temporarily unavailable' });
