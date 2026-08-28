@@ -182,7 +182,24 @@ function deriveResult(pnl) {
 }
 
 export default function JournalScreen() {
-  const [activeTab, setActiveTab] = useState('trades');
+  const [activeTab, setActiveTab] = useState(() => {
+    // Bug 3 fix: restore active tab from URL on page load
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab && ['trades', 'log', 'performance'].includes(tab)) return tab;
+    }
+    return 'trades';
+  });
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    // Update URL without adding to browser history
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', tab);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState(null, '', newUrl);
+  };
+
   const [logStep, setLogStep] = useState(1);
   const [trades, setTrades] = useState(() => getTrades());
   const [form, setForm] = useState(emptyForm);
@@ -429,7 +446,7 @@ export default function JournalScreen() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 bg-slate-900/50 p-1 rounded-xl">
+      <div className="sticky top-0 z-10 flex gap-1 mb-5 bg-slate-900/95 backdrop-blur-sm p-1 rounded-xl">
         {[
           { id: 'trades', label: 'My Trades', icon: BookOpen },
           { id: 'log', label: 'Log Trade', icon: Plus },
@@ -439,7 +456,7 @@ export default function JournalScreen() {
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === tab.id ? 'bg-slate-800 text-emerald-400' : 'text-slate-500 hover:text-slate-300'
               }`}
@@ -488,7 +505,7 @@ export default function JournalScreen() {
                 <div key={trade.id} className="relative overflow-hidden rounded-xl" style={{ height: 'auto' }}>
                   {/* Delete button behind the row */}
                   <div
-                    className="absolute inset-0 flex items-center justify-end pr-4 bg-red-500 rounded-xl"
+                    className={`absolute inset-0 flex items-center justify-end pr-4 bg-red-500 rounded-xl transition-opacity duration-200 ${isSwiped ? 'opacity-100' : 'opacity-0'}`}
                     style={{ zIndex: 0 }}
                   >
                     <button
