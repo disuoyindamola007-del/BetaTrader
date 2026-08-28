@@ -12,6 +12,18 @@ const EMOTIONS = [
 ];
 const STRATEGIES = ['Breakout', 'Trend Following', 'Reversal', 'Range Trading', 'Scalping', 'Swing'];
 
+// Forex pip-value conversion (USD-quoted pairs)
+const PIP_VALUE_PER_LOT = {
+  standard: 10,
+  mini: 1,
+  micro: 0.1,
+};
+
+// Detect JPY pairs (pip = price * 100, not * 10000)
+function isJpyPair(symbol) {
+  return /JPY$/.test((symbol || '').toUpperCase());
+}
+
 // Detect commodity instrument type: 'cfd' (metals → Lot Size) or 'futures' (energy/etc → Contracts)
 function getCommodityType(symbol) {
   const upper = (symbol || '').toUpperCase().replace('/', '');
@@ -23,22 +35,47 @@ function getCommodityType(symbol) {
 // Field config per asset class / instrument type
 function getFieldConfig(assetClass, symbol) {
   if (assetClass === 'forex') {
-    return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false };
+    return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false, usesCapital: false, usesPips: true };
   }
   if (assetClass === 'crypto') {
-    return { quantityLabel: 'Quantity', quantityPlaceholder: '0.5', quantityKey: 'quantity', hasLeverage: true };
+    return { quantityLabel: 'Capital (USD)', quantityPlaceholder: '1000', quantityKey: 'capital', hasLeverage: true, usesCapital: true, usesPips: false };
   }
   if (assetClass === 'stocks') {
-    return { quantityLabel: 'Shares', quantityPlaceholder: '10', quantityKey: 'quantity', hasLeverage: false };
+    return { quantityLabel: 'Shares', quantityPlaceholder: '10', quantityKey: 'quantity', hasLeverage: false, usesCapital: false, usesPips: false };
   }
   if (assetClass === 'commodities') {
     const type = getCommodityType(symbol);
     if (type === 'cfd') {
-      return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false };
+      return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false, usesCapital: false, usesPips: true };
     }
-    return { quantityLabel: 'Contracts', quantityPlaceholder: '1', quantityKey: 'quantity', hasLeverage: false };
+    return { quantityLabel: 'Contracts', quantityPlaceholder: '1', quantityKey: 'quantity', hasLeverage: false, usesCapital: false, usesPips: false };
   }
-  return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false };
+  return { quantityLabel: 'Lot Size', quantityPlaceholder: '0.01', quantityKey: 'lotSize', hasLeverage: false, usesCapital: false, usesPips: false };
+}
+
+// Derive coin quantity from capital (margin), leverage, and entry price (crypto only)
+function deriveCryptoQuantity(capital, leverage, entryPrice) {
+  const lev = Number(leverage) || 1;
+  return (Number(capital) * lev) / Number(entryPrice);
+}
+
+// Calculate liquidation price for leveraged positions (crypto)
+function calcLiquidationPrice(entry, leverage, side) {
+  const lev = Number(leverage) || 1;
+  if (lev <= 1) return null;
+  const direction = side === 'buy' ? -1 : 1;
+  return entry * (1 + direction / lev);
+}
+
+// Validate a price level against liquidation price
+function validateAgainstLiquidation(entry, level, leverage, side, label) {
+  const liqPrice = calcLiquidationPrice(entry, leverage, side);
+  if (!liqPrice) return null;
+  const breached = side === 'buy' ? Number(level) <= liqPrice : Number(level) >= liqPrice;
+  if (breached) {
+    return `${label} (${Number(level).toFixed(4)}) is beyond the liquidation price (${liqPrice.toFixed(4)}) at ${leverage}x leverage — this position would have been liquidated first.`;
+  }
+  return null;
 }
 
 const emptyForm = {
@@ -54,6 +91,8 @@ const emptyForm = {
   exit: '',
   quantity: '',
   lotSize: '',
+  capital: '',
+  lotType: '',
   leverage: '',
   stopLoss: '',
   takeProfit: '',
@@ -64,7 +103,7 @@ const emptyForm = {
 };
 
 const step1Errors = { asset: '', direction: '', timeframe: '' };
-const step2Errors = { entry: '', exit: '', quantity: '', slError: '', tpError: '' };
+const step2Errors = { entry: '', exit: '', quantity: '', slError: '', tpError: '', liqError: '' };
 const step3Errors = { bias: '', emotion: '', strategy: '' };
 
 // Calculate P&L from trade data
@@ -72,16 +111,42 @@ const step3Errors = { bias: '', emotion: '', strategy: '' };
 function calculateClosedPnL(trade) {
   const entry = Number(trade.entry) || 0;
   const exit = Number(trade.exit) || 0;
-  const qty = Number(trade.quantity) || Number(trade.lotSize) || 0;
+  const direction = trade.direction === 'sell' ? -1 : 1;
+
+  // Forex: pip-value conversion
+  if (trade.assetClass === 'forex') {
+    const lotSize = Number(trade.lotSize) || 0;
+    if (!entry || !exit || !lotSize) return 0;
+    const pipMultiplier = isJpyPair(trade.asset) ? 100 : 10000;
+    const pips = (exit - entry) * pipMultiplier * direction;
+    const lotType = trade.lotType || 'standard';
+    const pipValue = PIP_VALUE_PER_LOT[lotType] || PIP_VALUE_PER_LOT.standard;
+    const gross = pips * pipValue * lotSize;
+    return Math.round(gross * 100) / 100;
+  }
+
+  // Crypto: derive quantity from capital (margin) + leverage
+  if (trade.assetClass === 'crypto') {
+    const capital = Number(trade.capital) || 0;
+    const leverage = Number(trade.leverage) || 1;
+    if (!entry || !exit || !capital) return 0;
+    const qty = deriveCryptoQuantity(capital, leverage, entry);
+    const gross = (exit - entry) * qty * direction;
+    return Math.round(gross * 100) / 100;
+  }
+
+  // Stocks & Commodities: standard (exit - entry) * quantity
+  const qty = Number(trade.quantity) || 0;
   if (!entry || !exit || !qty) return 0;
-  const gross = trade.direction === 'sell' ? (entry - exit) * qty : (exit - entry) * qty;
+  const gross = (exit - entry) * qty * direction;
   return Math.round(gross * 100) / 100;
 }
 
 // Projected P/L for open trades (substitute a target price for exit)
 function calculateProjectedPnL(entry, targetPrice, qty, direction) {
   if (!entry || !targetPrice || !qty) return 0;
-  const gross = direction === 'sell' ? (entry - targetPrice) * qty : (targetPrice - entry) * qty;
+  const dir = direction === 'sell' ? -1 : 1;
+  const gross = (targetPrice - entry) * qty * dir;
   return Math.round(gross * 100) / 100;
 }
 
@@ -114,7 +179,11 @@ export default function JournalScreen() {
   const tradesWithPnL = trades.map(t => {
     if (t.status === 'open') {
       const entry = Number(t.entry) || 0;
-      const qty = Number(t.quantity) || Number(t.lotSize) || 0;
+      let qty = Number(t.quantity) || Number(t.lotSize) || 0;
+      // Crypto: derive quantity from capital (margin) + leverage
+      if (t.assetClass === 'crypto' && qty === 0) {
+        qty = deriveCryptoQuantity(Number(t.capital), Number(t.leverage), entry);
+      }
       const tpPnl = calculateProjectedPnL(entry, Number(t.takeProfit), qty, t.direction);
       const slPnl = calculateProjectedPnL(entry, Number(t.stopLoss), qty, t.direction);
       return { ...t, tpPnl, slPnl, pnl: 0, result: null };
@@ -168,7 +237,7 @@ export default function JournalScreen() {
     const config = getFieldConfig(resolveAssetClass(), form.assetSymbol);
     const errors = { ...step2Errors };
 
-    // Entry and quantity always required
+    // Entry and quantity/capital always required
     if (form.entry === '' || Number.isNaN(Number(form.entry))) errors.entry = 'Enter entry price.';
     if (form[config.quantityKey] === '' || Number.isNaN(Number(form[config.quantityKey]))) {
       errors.quantity = `Enter ${config.quantityLabel.toLowerCase()}.`;
@@ -179,6 +248,7 @@ export default function JournalScreen() {
       if (form.exit === '' || Number.isNaN(Number(form.exit))) errors.exit = 'Enter exit price.';
       errors.slError = '';
       errors.tpError = '';
+      errors.liqError = '';
     } else {
       // Open trade: SL and TP required, exit not shown
       errors.exit = '';
@@ -196,6 +266,20 @@ export default function JournalScreen() {
         } else {
           if (sl <= entry) errors.slError = 'Stop loss must be above entry for short positions.';
           if (tp >= entry) errors.tpError = 'Take profit must be below entry for short positions.';
+        }
+      }
+
+      // Crypto liquidation validation (when leverage > 1)
+      errors.liqError = '';
+      if (resolveAssetClass() === 'crypto' && Number(form.leverage) > 1 && entry) {
+        const lev = Number(form.leverage);
+        if (sl) {
+          const slLiq = validateAgainstLiquidation(entry, sl, lev, form.direction, 'Stop Loss');
+          if (slLiq) errors.slError = slLiq;
+        }
+        if (tp) {
+          const tpLiq = validateAgainstLiquidation(entry, tp, lev, form.direction, 'Take Profit');
+          if (tpLiq) errors.tpError = tpLiq;
         }
       }
     }
@@ -216,7 +300,7 @@ export default function JournalScreen() {
     const assetClass = resolveAssetClass();
     const config = getFieldConfig(assetClass, form.assetSymbol);
     const qtyKey = config.quantityKey;
-    const updated = createTrade({
+    const tradeData = {
       asset: form.assetSymbol.trim().toUpperCase(),
       assetName: form.assetName || form.assetSymbol.trim().toUpperCase(),
       assetClass,
@@ -233,7 +317,10 @@ export default function JournalScreen() {
       emotion: form.emotion,
       strategy: form.strategy,
       notes: form.notes.trim(),
-    });
+    };
+    // Persist lot type for forex/commodity CFD trades
+    if (config.usesPips) tradeData.lotType = form.lotType || 'standard';
+    const updated = createTrade(tradeData);
     setTrades(updated);
     resetWizard();
     setActiveTab('trades');
@@ -252,6 +339,16 @@ export default function JournalScreen() {
       assetSymbol: result.symbol,
       assetName: result.name,
       assetClass: result.category,
+      // Bug 5 fix: reset all Step 2 fields when asset type changes
+      entry: '',
+      exit: '',
+      quantity: '',
+      lotSize: '',
+      capital: '',
+      lotType: '',
+      leverage: '',
+      stopLoss: '',
+      takeProfit: '',
     }));
     setSearchQuery(result.symbol);
     setShowSearchResults(false);
@@ -635,6 +732,29 @@ export default function JournalScreen() {
                 {formErrors.step2.quantity && <p className="text-xs text-red-400 mt-1">{formErrors.step2.quantity}</p>}
               </div>
 
+              {/* Forex Lot Type */}
+              {fieldConfig.usesPips && (
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Lot Type</label>
+                  <div className="flex gap-1 bg-slate-800 p-1 rounded-xl">
+                    {['standard', 'mini', 'micro'].map(type => (
+                      <button
+                        key={type}
+                        onClick={() => updateField('lotType', type)}
+                        className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
+                          form.lotType === type
+                            ? 'bg-emerald-500 text-slate-950'
+                            : 'text-slate-400 hover:text-slate-300'
+                        }`}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">Standard = $10/pip, Mini = $1/pip, Micro = $0.10/pip</p>
+                </div>
+              )}
+
               {fieldConfig.hasLeverage && (
                 <div>
                   <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Leverage</label>
@@ -678,6 +798,19 @@ export default function JournalScreen() {
                 </div>
               )}
 
+              {/* Crypto liquidation price info */}
+              {form.status === 'open' && resolveAssetClass() === 'crypto' && Number(form.leverage) > 1 && Number(form.entry) && (
+                <div className="glass-card bg-amber-500/5 border border-amber-500/20 p-3 rounded-xl">
+                  <p className="text-[10px] text-amber-500 uppercase tracking-wider mb-1">Liquidation Price</p>
+                  <p className="text-sm font-mono text-amber-400">
+                    ${calcLiquidationPrice(Number(form.entry), Number(form.leverage), form.direction)?.toFixed(4)}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    At {form.leverage}x leverage on {form.direction === 'buy' ? 'long' : 'short'}
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-2 mt-2">
                 <button onClick={() => setLogStep(1)} className="flex-1 btn-secondary">Back</button>
                 <button onClick={handleContinue} className="flex-1 btn-primary">Continue</button>
@@ -690,7 +823,14 @@ export default function JournalScreen() {
             const isClosed = form.status === 'closed';
             const closedPnl = isClosed ? calculateClosedPnL(form) : 0;
             const entry = Number(form.entry) || 0;
-            const qty = Number(form.quantity) || Number(form.lotSize) || 0;
+            const assetClass = resolveAssetClass();
+            // Derive effective quantity for projected P/L display
+            let qty = 0;
+            if (assetClass === 'crypto') {
+              qty = deriveCryptoQuantity(Number(form.capital), Number(form.leverage), entry);
+            } else {
+              qty = Number(form.quantity) || Number(form.lotSize) || 0;
+            }
             const tpPnl = calculateProjectedPnL(entry, Number(form.takeProfit), qty, form.direction);
             const slPnl = calculateProjectedPnL(entry, Number(form.stopLoss), qty, form.direction);
             const result = isClosed ? deriveResult(closedPnl) : null;
