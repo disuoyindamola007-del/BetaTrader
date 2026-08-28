@@ -134,7 +134,7 @@ export default function JournalScreen() {
 
   const handleNext = () => {
     const errors = { ...step1Errors };
-    if (!form.assetSymbol.trim()) errors.asset = 'Select an asset from the suggestions.';
+    if (!form.assetSymbol.trim()) errors.asset = 'Enter an asset symbol.';
     if (!form.direction) errors.direction = 'Choose Buy or Sell.';
     if (!form.timeframe) errors.timeframe = 'Select a timeframe.';
     setFormErrors(prev => ({ ...prev, step1: errors }));
@@ -144,7 +144,7 @@ export default function JournalScreen() {
 
   const handleContinue = () => {
     // Step 2 validation — then advance to Step 3 (do NOT save yet)
-    const config = getFieldConfig(form.assetClass, form.assetSymbol);
+    const config = getFieldConfig(resolveAssetClass(), form.assetSymbol);
     const errors = { ...step2Errors };
     if (form.entry === '' || Number.isNaN(Number(form.entry))) errors.entry = 'Enter entry price.';
     if (form.exit === '' || Number.isNaN(Number(form.exit))) errors.exit = 'Enter exit price.';
@@ -165,12 +165,13 @@ export default function JournalScreen() {
     setFormErrors(prev => ({ ...prev, step3: errors }));
     if (Object.values(errors).some(e => e)) return;
 
-    const config = getFieldConfig(form.assetClass, form.assetSymbol);
+    const assetClass = resolveAssetClass();
+    const config = getFieldConfig(assetClass, form.assetSymbol);
     const qtyKey = config.quantityKey;
     const updated = createTrade({
       asset: form.assetSymbol.trim().toUpperCase(),
-      assetName: form.assetName,
-      assetClass: form.assetClass,
+      assetName: form.assetName || form.assetSymbol.trim().toUpperCase(),
+      assetClass,
       direction: form.direction,
       timeframe: form.timeframe === 'custom' ? form.timeframeCustom.trim() : form.timeframe,
       entry: Number(form.entry) || null,
@@ -207,7 +208,11 @@ export default function JournalScreen() {
     setShowSearchResults(false);
   };
 
-  const fieldConfig = getFieldConfig(form.assetClass, form.assetSymbol);
+  // Resolve the effective asset class — uses the detected class if a
+  // suggestion was selected, otherwise defaults to 'forex' for manual entries.
+  const resolveAssetClass = () => form.assetClass || 'forex';
+
+  const fieldConfig = getFieldConfig(resolveAssetClass(), form.assetSymbol);
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
@@ -342,8 +347,16 @@ export default function JournalScreen() {
                     type="text"
                     placeholder="EUR/USD, BTC, AAPL..."
                     value={searchQuery}
-                    onChange={e => { setSearchQuery(e.target.value); setShowSearchResults(true); updateField('assetSymbol', ''); updateField('assetName', ''); updateField('assetClass', ''); }}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setSearchQuery(val);
+                      setShowSearchResults(true);
+                      // Always keep assetSymbol in sync with what's typed —
+                      // user can proceed with manual entry even without selecting a suggestion
+                      updateField('assetSymbol', val.trim().toUpperCase());
+                    }}
                     onFocus={() => setShowSearchResults(true)}
+                    onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
                     className="w-full input-field pr-8"
                   />
                   {searchQuery && (
@@ -355,7 +368,7 @@ export default function JournalScreen() {
                     <div className="absolute z-50 w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-h-60 overflow-y-auto">
                       {searchLoading && <div className="p-3 text-xs text-slate-500 text-center">Searching...</div>}
                       {!searchLoading && searchResults.length === 0 && (
-                        <div className="p-3 text-xs text-slate-500 text-center">No results found. Try a different symbol.</div>
+                        <div className="p-3 text-xs text-slate-500 text-center">No results — you can still log it manually.</div>
                       )}
                       {!searchLoading && searchResults.map(result => (
                         <button
@@ -374,7 +387,10 @@ export default function JournalScreen() {
                   )}
                 </div>
                 {formErrors.step1.asset && <p className="text-xs text-red-400 mt-1">{formErrors.step1.asset}</p>}
-                {form.assetSymbol && (
+                {form.assetSymbol && !form.assetName && (
+                  <p className="text-[10px] text-slate-400 mt-1">Manual entry — asset type will default to forex</p>
+                )}
+                {form.assetSymbol && form.assetName && (
                   <p className="text-[10px] text-emerald-400 mt-1">✓ {form.assetSymbol} ({form.assetClass})</p>
                 )}
               </div>
