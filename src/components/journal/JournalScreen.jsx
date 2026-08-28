@@ -200,7 +200,24 @@ export default function JournalScreen() {
     window.history.replaceState(null, '', newUrl);
   };
 
-  const [logStep, setLogStep] = useState(1);
+  const handleStepChange = (step) => {
+    setLogStep(step);
+    // Persist step in URL so refresh keeps the user on the same wizard step
+    const params = new URLSearchParams(window.location.search);
+    params.set('step', String(step));
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState(null, '', newUrl);
+  };
+
+  const [logStep, setLogStep] = useState(() => {
+    // Bug 4 fix: restore wizard step from URL on page load
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const step = parseInt(params.get('step') || '1', 10);
+      if (step >= 1 && step <= 3) return step;
+    }
+    return 1;
+  });
   const [trades, setTrades] = useState(() => getTrades());
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({ step1: { ...step1Errors }, step2: { ...step2Errors }, step3: { ...step3Errors } });
@@ -261,7 +278,7 @@ export default function JournalScreen() {
 
   const resetWizard = () => {
     setForm(emptyForm);
-    setLogStep(1);
+    handleStepChange(1);
     setFormErrors({ step1: { ...step1Errors }, step2: { ...step2Errors }, step3: { ...step3Errors } });
     setSearchQuery('');
     setShowSearchResults(false);
@@ -274,7 +291,7 @@ export default function JournalScreen() {
     if (!form.timeframe) errors.timeframe = 'Select a timeframe.';
     setFormErrors(prev => ({ ...prev, step1: errors }));
     if (Object.values(errors).some(e => e)) return;
-    setLogStep(s => Math.min(3, s + 1));
+    handleStepChange(Math.min(3, logStep + 1));
   };
 
   const handleContinue = () => {
@@ -330,7 +347,7 @@ export default function JournalScreen() {
 
     setFormErrors(prev => ({ ...prev, step2: errors }));
     if (Object.values(errors).some(e => e)) return;
-    setLogStep(3);
+    handleStepChange(3);
   };
 
   const handleSave = () => {
@@ -435,37 +452,40 @@ export default function JournalScreen() {
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-extrabold">Trading Journal</h1>
-        <button
-          onClick={() => { resetWizard(); setActiveTab('log'); }}
-          className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center text-slate-950"
-        >
-          <Plus size={18} />
-        </button>
-      </div>
+      {/* Sticky header: title + tab bar */}
+      <div className="sticky top-0 z-10 bg-gradient-to-b from-slate-950 via-slate-950/98 to-transparent pb-2">
+        <div className="flex items-center justify-between mb-3 pt-1">
+          <h1 className="text-xl font-extrabold">Trading Journal</h1>
+          <button
+            onClick={() => { resetWizard(); handleTabChange('log'); }}
+            className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center text-slate-950"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
 
-      {/* Tabs */}
-      <div className="sticky top-0 z-10 flex gap-1 mb-5 bg-slate-900/95 backdrop-blur-sm p-1 rounded-xl">
-        {[
-          { id: 'trades', label: 'My Trades', icon: BookOpen },
-          { id: 'log', label: 'Log Trade', icon: Plus },
-          { id: 'performance', label: 'Performance', icon: BarChart3 },
-        ].map(tab => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === tab.id ? 'bg-slate-800 text-emerald-400' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              <Icon size={14} />
-              {tab.label}
-            </button>
-          );
-        })}
+        {/* Tabs */}
+        <div className="flex gap-1 mb-2 bg-slate-900/95 backdrop-blur-sm p-1 rounded-xl">
+          {[
+            { id: 'trades', label: 'My Trades', icon: BookOpen },
+            { id: 'log', label: 'Log Trade', icon: Plus },
+            { id: 'performance', label: 'Performance', icon: BarChart3 },
+          ].map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id)}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === tab.id ? 'bg-slate-800 text-emerald-400' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                <Icon size={14} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* MY TRADES */}
@@ -788,7 +808,12 @@ export default function JournalScreen() {
 
               {/* Asset Search */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Asset Symbol</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wider">Asset Symbol</label>
+                  {form.assetSymbol && form.assetName && (
+                    <span className="text-[10px] text-emerald-400 font-mono">{form.assetClass}</span>
+                  )}
+                </div>
                 <div className="relative">
                   <input
                     type="text"
@@ -801,6 +826,10 @@ export default function JournalScreen() {
                       // Always keep assetSymbol in sync with what's typed —
                       // user can proceed with manual entry even without selecting a suggestion
                       updateField('assetSymbol', val.trim().toUpperCase());
+                      // Bug 1 fix: clear the asset error immediately on any input
+                      if (formErrors.step1.asset) {
+                        setFormErrors(prev => ({ ...prev, step1: { ...prev.step1, asset: '' } }));
+                      }
                     }}
                     onFocus={() => setShowSearchResults(true)}
                     onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
@@ -836,9 +865,6 @@ export default function JournalScreen() {
                 {formErrors.step1.asset && <p className="text-xs text-red-400 mt-1">{formErrors.step1.asset}</p>}
                 {form.assetSymbol && !form.assetName && (
                   <p className="text-[10px] text-slate-400 mt-1">Manual entry — asset type will default to forex</p>
-                )}
-                {form.assetSymbol && form.assetName && (
-                  <p className="text-[10px] text-emerald-400 mt-1">✓ {form.assetSymbol} ({form.assetClass})</p>
                 )}
               </div>
 
@@ -1074,7 +1100,7 @@ export default function JournalScreen() {
               )}
 
               <div className="flex gap-2 mt-2">
-                <button onClick={() => setLogStep(1)} className="flex-1 btn-secondary">Back</button>
+                <button onClick={() => handleStepChange(1)} className="flex-1 btn-secondary">Back</button>
                 <button onClick={handleContinue} className="flex-1 btn-primary">Continue</button>
               </div>
             </div>
@@ -1236,7 +1262,7 @@ export default function JournalScreen() {
                 </div>
 
                 <div className="flex gap-2 mt-2">
-                  <button onClick={() => setLogStep(2)} className="flex-1 btn-secondary">Back</button>
+                  <button onClick={() => handleStepChange(2)} className="flex-1 btn-secondary">Back</button>
                   <button onClick={handleSave} className="flex-1 btn-primary">Save Trade</button>
                 </div>
               </div>
