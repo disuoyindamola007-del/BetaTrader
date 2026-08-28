@@ -32,11 +32,12 @@ export default async function handler(req, res) {
 
   const bucket = bucketValue(metric, value);
   if (bucket == null) return res.status(400).json({ error: 'Invalid market metric value' });
-  const cacheKey = `market:explain:v1:${metric}:${bucket}`;
+  const metricKey = metric.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const cacheKey = `market:explain:v1:${metricKey}:${bucket}`;
   const cached = await get(cacheKey, EXPLANATION_TTL_MS);
   if (cached) {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ explanation: cached, cached: true });
+    return res.status(200).json({ explanation: cached.explanation || cached, cached: true });
   }
 
   if (Date.now() < groqCooldownUntil) {
@@ -79,7 +80,7 @@ export default async function handler(req, res) {
     const explanation = data?.choices?.[0]?.message?.content?.trim();
     if (!explanation) return res.status(502).json({ error: 'AI context is temporarily unavailable' });
 
-    await set(cacheKey, explanation, EXPLANATION_TTL_MS);
+    await set(cacheKey, { explanation }, EXPLANATION_TTL_MS);
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ explanation, cached: false });
   } catch (error) {
