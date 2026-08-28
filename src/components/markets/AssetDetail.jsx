@@ -20,8 +20,8 @@ export default function AssetDetail() {
   // Stale-while-revalidate: useQuote displays cached data immediately.
   // If the cached quote is fresh (within TTL), no network request is made.
   // If expired, the old value displays while a fresh quote is fetched in background.
-  const { data: quote, error: quoteError, isLoading: quoteLoading, isStale, refetch: refetchQuote } = useQuote(symbol, !!symbol, selectedAsset?.providerSymbol, selectedAsset?.category);
-  const { data: candles, error: candleError, isLoading: candleLoading, refetch: refetchCandles } = useCandles(symbol, timeframe, { enabled: !!symbol, limit: 200, providerSymbol: selectedAsset?.providerSymbol, categoryHint: selectedAsset?.category });
+  const { data: quote, error: quoteError, isLoading: quoteLoading, isStale, isUnavailable: quoteUnavailable, refetch: refetchQuote } = useQuote(symbol, !!symbol, selectedAsset?.providerSymbol, selectedAsset?.category);
+  const { data: candles, error: candleError, isLoading: candleLoading, isUnavailable: candleUnavailable, refetch: refetchCandles } = useCandles(symbol, timeframe, { enabled: !!symbol, limit: 200, providerSymbol: selectedAsset?.providerSymbol, categoryHint: selectedAsset?.category });
 
   const handleRetry = useCallback(() => {
     refetchQuote();
@@ -29,6 +29,7 @@ export default function AssetDetail() {
   }, [refetchQuote, refetchCandles]);
 
   const isLoading = quoteLoading || candleLoading;
+  const isUnavailable = quoteUnavailable || candleUnavailable;
   const chartError = quoteError || candleError;
 
   // Indicators
@@ -232,7 +233,13 @@ export default function AssetDetail() {
           )}
           {chartError && !isLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg z-10 px-6">
-              {isStale ? (
+              {isUnavailable ? (
+                <>
+                  <AlertTriangle size={24} className="text-amber-400 mb-2" />
+                  <p className="text-sm text-amber-400 mb-1 font-semibold">Unavailable on current plan</p>
+                  <p className="text-xs text-slate-400 text-center">{chartError}</p>
+                </>
+              ) : isStale ? (
                 <>
                   <AlertTriangle size={24} className="text-amber-400 mb-2" />
                   <p className="text-sm text-amber-400 mb-1 font-semibold">Rate Limit Reached</p>
@@ -244,7 +251,7 @@ export default function AssetDetail() {
                   <p className="text-xs text-slate-500 text-center">{chartError}</p>
                 </>
               )}
-              <button onClick={handleRetry} className="mt-3 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-lg border border-emerald-500/30">Retry</button>
+              {!isUnavailable && <button onClick={handleRetry} className="mt-3 px-3 py-1.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-lg border border-emerald-500/30">Retry</button>}
             </div>
           )}
         </div>

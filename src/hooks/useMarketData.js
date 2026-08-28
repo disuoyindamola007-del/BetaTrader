@@ -25,6 +25,7 @@ export function useQuote(symbol, enabled = true, providerSymbol = null, category
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isStale, setIsStale] = useState(false);
+  const [isUnavailable, setIsUnavailable] = useState(false);
   const intervalRef = useRef(null);
   const currentSymbolRef = useRef(symbol);
 
@@ -33,6 +34,8 @@ export function useQuote(symbol, enabled = true, providerSymbol = null, category
 
     const callSymbol = symbol;
     currentSymbolRef.current = callSymbol;
+    setError(null);
+    setIsUnavailable(false);
 
     const { cached, isFresh } = await peekQuote(callSymbol, providerSymbol, categoryHint);
 
@@ -52,6 +55,7 @@ export function useQuote(symbol, enabled = true, providerSymbol = null, category
       } catch (err) {
         if (currentSymbolRef.current !== callSymbol) return;
         setError(err.message);
+        setIsUnavailable(err.status === 422 || err.unavailable === true);
         if (err.rateLimited || err.isCooldown) setIsStale(true);
       } finally {
         if (currentSymbolRef.current === callSymbol && !isBackground) {
@@ -78,7 +82,7 @@ export function useQuote(symbol, enabled = true, providerSymbol = null, category
 
   const refetch = useCallback(() => load(false), [load]);
 
-  return { data, error, isLoading, isStale, refetch };
+  return { data, error, isLoading, isStale, isUnavailable, refetch };
 }
 
 export function useCandles(symbol, interval, options = {}) {
@@ -86,6 +90,7 @@ export function useCandles(symbol, interval, options = {}) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUnavailable, setIsUnavailable] = useState(false);
   const intervalRef = useRef(null);
 
   const load = useCallback(async (isBackground = false) => {
@@ -96,8 +101,10 @@ export function useCandles(symbol, interval, options = {}) {
       const candles = await fetchCandles(symbol, interval, limit, providerSymbol, categoryHint);
       setData(candles);
       setError(null);
+      setIsUnavailable(false);
     } catch (err) {
       setError(err.message);
+      setIsUnavailable(err.status === 422 || err.unavailable === true);
     } finally {
       if (!isBackground) setIsLoading(false);
     }
@@ -119,7 +126,7 @@ export function useCandles(symbol, interval, options = {}) {
 
   const refetch = useCallback(() => load(false), [load]);
 
-  return { data, error, isLoading, refetch };
+  return { data, error, isLoading, isUnavailable, refetch };
 }
 
 export function useBatchQuotes(symbols, enabled = true) {
