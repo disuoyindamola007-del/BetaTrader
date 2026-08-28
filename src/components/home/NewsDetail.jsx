@@ -41,7 +41,7 @@ export default function NewsDetail({ article }) {
         <div className="flex items-center gap-2 text-xs text-slate-500 mb-3"><span>{article.source}</span><span>&bull;</span><span>{formatDate(article.datetime)}</span></div>
         <h1 className="text-xl font-extrabold leading-tight mb-5">{article.headline}</h1>
         <div className="bg-emerald-500/8 border border-emerald-500/15 rounded-2xl p-4 mb-5">
-          <div className="flex items-center gap-2 mb-3"><Sparkles size={16} className="text-emerald-400" /><span className="text-[11px] font-bold tracking-wider text-emerald-400 uppercase">AI Summary</span></div>
+          <div className="flex items-center gap-2 mb-3"><Sparkles size={16} className="text-emerald-400" /><span className="text-[11px] font-bold tracking-wider text-emerald-400 uppercase">AI News Breakdown</span></div>
           {isLoading && <div className="flex items-center gap-2 text-sm text-slate-400"><RefreshCw size={15} className="animate-spin" />Preparing summary...</div>}
           {!isLoading && error && <div className="flex items-start gap-2 text-sm text-amber-400"><AlertTriangle size={15} className="mt-0.5 shrink-0" />{error}</div>}
           {!isLoading && !error && summary && (
