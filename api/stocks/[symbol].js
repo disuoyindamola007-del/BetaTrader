@@ -3,7 +3,7 @@ import { validateMarketQuery } from '../../lib/validateMarketQuery.js';
 import { parseTdQuote, checkTdError } from '../../lib/twelveData.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
 
-const FINNHUB_BASE = 'https://finnhub.io/api/v2';
+const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
 const INDEX_PROXY_MAP = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA' };
@@ -34,6 +34,10 @@ async function fetchFinnhub(url) {
     throw err;
   }
   if (!res.ok) throw new Error(`Finnhub fetch failed: ${res.status} ${res.statusText}`);
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(`Finnhub returned non-JSON content (${contentType || 'unknown content type'})`);
+  }
   return res.json();
 }
 
