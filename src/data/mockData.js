@@ -19,15 +19,6 @@ export const mockAssets = [
   { symbol: 'DJI', name: 'Dow Jones', category: 'indices', price: 41250.30, change: -120.50, changePct: -0.29, bias: 'neutral', confidence: 52 },
 ];
 
-export const marketPulse = [
-  { label: 'Fear & Greed', value: '45', sublabel: 'Neutral', color: 'warning' },
-  { label: 'BTC Dom', value: '57.2%', sublabel: 'High', color: 'emerald' },
-  { label: 'DXY', value: '104.2', sublabel: 'Strong', color: 'emerald' },
-  { label: 'VIX', value: '14.3', sublabel: 'Low', color: 'emerald' },
-  { label: 'Gold', value: '$2,413', sublabel: 'Flat', color: 'neutral' },
-  { label: 'Oil', value: '$82.4', sublabel: 'Rising', color: 'emerald' },
-];
-
 export const watchlist = ['EUR/USD', 'BTC', 'GOLD', 'SOL', 'SPX'];
 
 export const trending = {
@@ -41,60 +32,6 @@ export const trending = {
     { symbol: 'AUD/USD', changePct: -0.18 },
     { symbol: 'EUR/JPY', changePct: -0.10 },
   ],
-};
-
-export const newsItems = [
-  {
-    id: 1,
-    headline: 'Fed signals potential rate cut in September meeting',
-    source: 'Bloomberg',
-    time: '2h ago',
-    related: ['EUR/USD', 'DXY', 'GOLD'],
-    summary: 'Federal Reserve officials hinted at a possible 25bp rate reduction, boosting risk assets and pressuring the dollar.',
-  },
-  {
-    id: 2,
-    headline: 'Bitcoin breaks above $67K as ETF inflows surge',
-    source: 'CoinDesk',
-    time: '4h ago',
-    related: ['BTC', 'ETH', 'SOL'],
-    summary: 'Spot Bitcoin ETFs saw $890M in net inflows this week, the highest since March.',
-  },
-  {
-    id: 3,
-    headline: 'Oil prices climb on Middle East supply concerns',
-    source: 'Reuters',
-    time: '5h ago',
-    related: ['OIL', 'USD/CAD'],
-    summary: 'Geopolitical tensions in the Strait of Hormuz raised supply disruption fears.',
-  },
-  {
-    id: 4,
-    headline: 'NFP data beats expectations, unemployment drops to 4.1%',
-    source: 'ForexLive',
-    time: '8h ago',
-    related: ['EUR/USD', 'USD/JPY', 'DXY'],
-    summary: 'Non-farm payrolls added 275K jobs vs 225K expected, but wage growth slowed.',
-  },
-];
-
-export const economicEvents = [
-  { time: '20:30', country: 'USD', event: 'Non-Farm Payrolls', impact: 'high', forecast: '225K', previous: '272K', actual: '275K' },
-  { time: '22:00', country: 'USD', event: 'ISM Manufacturing PMI', impact: 'medium', forecast: '48.5', previous: '48.7', actual: null },
-  { time: '08:30', country: 'EUR', event: 'ECB Interest Rate Decision', impact: 'high', forecast: '4.25%', previous: '4.25%', actual: null },
-  { time: '14:00', country: 'GBP', event: 'BoE Governor Speech', impact: 'medium', forecast: '-', previous: '-', actual: null },
-];
-
-export const aiBriefing = {
-  sentiment: 'Neutral-Bullish',
-  confidence: 72,
-  summary: 'Markets are showing cautious optimism after the Fed\'s dovish signals. Risk assets like crypto and equities are bid, while the dollar faces mild pressure. Key risk remains tomorrow\'s ISM data.',
-  volatility: 'Moderate',
-  keyLevels: {
-    'EUR/USD': { support: '1.0820', resistance: '1.0900' },
-    'BTC': { support: '65,200', resistance: '69,500' },
-    'GOLD': { support: '2,380', resistance: '2,450' },
-  },
 };
 
 export const journalTrades = [

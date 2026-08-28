@@ -5,11 +5,9 @@ import {
   Activity, BookOpen, Bell, BarChart3,
   ChevronRight, Sparkles, RefreshCw, Clock
 } from 'lucide-react';
-import {
-  mockAssets, marketPulse, watchlist, trending,
-  aiBriefing
-} from '../../data/mockData.js';
+import { mockAssets, watchlist, trending } from '../../data/mockData.js';
 import { useNews } from '../../hooks/useNews.js';
+import { useMarketOverview } from '../../hooks/useMarketOverview.js';
 import { useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { getCategory } from '../../services/marketDataService.js';
 import AIBadge from '../shared/AIBadge.jsx';
@@ -18,6 +16,8 @@ import PriceChange from '../shared/PriceChange.jsx';
 export default function HomeScreen() {
   const { navigateToAsset, navigateToNews, setActiveTab, openMarketSearch, userName } = useApp();
   const { news: liveNews, isLoading: newsLoading, error: newsError } = useNews();
+  const { data: marketOverview, isLoading: overviewLoading, error: overviewError, reload: reloadOverview } = useMarketOverview();
+  const [briefingExpanded, setBriefingExpanded] = useState(false);
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
@@ -117,6 +117,8 @@ export default function HomeScreen() {
   const liveTrending = Object.keys(livePrices).length > 0 ? getLiveTrending() : trending;
 
   const displayedNews = liveNews.length > 0 ? liveNews : [];
+  const livePulse = marketOverview?.pulse || [];
+  const liveBriefing = marketOverview?.briefing;
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
@@ -139,35 +141,48 @@ export default function HomeScreen() {
       </div>
 
       <div className="mb-5 bg-gradient-to-br from-emerald-500/8 via-emerald-500/4 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4 glow-emerald">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-lg">🤖</span>
-          <span className="text-[11px] font-bold tracking-[0.15em] text-emerald-400 uppercase">Daily AI Briefing</span>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🤖</span>
+            <span className="text-[11px] font-bold tracking-[0.15em] text-emerald-400 uppercase">Daily AI Briefing</span>
+          </div>
+          {marketOverview?.briefingGeneratedAt && <span className="text-[9px] text-slate-500">Live • {new Date(marketOverview.briefingGeneratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
         </div>
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-sm font-semibold text-slate-100">{aiBriefing.sentiment}</span>
-          <span className="badge-bullish">{aiBriefing.confidence}% Conf</span>
-        </div>
-        <p className="text-[13px] text-slate-300 leading-relaxed mb-4">{aiBriefing.summary}</p>
-        <div className="flex gap-4 mb-4">
-          <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Volatility</p><p className="text-sm font-semibold text-amber-400">{aiBriefing.volatility}</p></div>
-          <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Key Risk</p><p className="text-sm font-semibold text-slate-200">ISM Data Tomorrow</p></div>
-        </div>
-        <button className="w-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-emerald-500/15 transition-colors">
-          Read Full Analysis <ArrowRight size={14} />
-        </button>
+        {overviewLoading && <div className="py-8 flex justify-center"><RefreshCw size={20} className="text-emerald-400 animate-spin" /></div>}
+        {!overviewLoading && liveBriefing && <>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-sm font-semibold text-slate-100">{liveBriefing.sentiment}</span>
+            <span className="badge-bullish">{liveBriefing.confidence}% Conf</span>
+          </div>
+          <p className="text-[13px] text-slate-300 leading-relaxed mb-4">{liveBriefing.summary}</p>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Volatility</p><p className="text-sm font-semibold text-amber-400">{liveBriefing.volatility}</p></div>
+            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Key Risk</p><p className="text-sm font-semibold text-slate-200">{liveBriefing.keyRisk}</p></div>
+          </div>
+          {briefingExpanded && <div className="mb-4 border-t border-slate-700/40 pt-3 space-y-3">
+            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Key Drivers</p><ul className="space-y-1">{liveBriefing.keyDrivers.map((item, index) => <li key={index} className="text-xs text-slate-300">• {item}</li>)}</ul></div>
+            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">What to Watch</p><ul className="space-y-1">{liveBriefing.watchNext.map((item, index) => <li key={index} className="text-xs text-slate-300">• {item}</li>)}</ul></div>
+          </div>}
+          <button onClick={() => setBriefingExpanded(value => !value)} className="w-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-emerald-500/15 transition-colors">
+            {briefingExpanded ? 'Show Less' : 'Read Full Analysis'} <ArrowRight size={14} className={briefingExpanded ? '-rotate-90' : 'rotate-90'} />
+          </button>
+        </>}
+        {!overviewLoading && !liveBriefing && <div className="py-4 text-center"><p className="text-sm text-amber-400 mb-3">{marketOverview?.briefingError || overviewError || 'Daily AI Briefing is temporarily unavailable.'}</p><button onClick={reloadOverview} className="text-xs text-emerald-400">Try Again</button></div>}
       </div>
 
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-3"><span className="section-title">Market Pulse</span></div>
-        <div className="grid grid-cols-3 gap-2">
-          {marketPulse.map((item) => (
+        <div className="flex items-center justify-between mb-3"><span className="section-title">Market Pulse</span>{livePulse.length > 0 && <span className="text-[10px] text-emerald-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Live</span>}</div>
+        {overviewLoading && <div className="glass-card p-5 flex justify-center"><RefreshCw size={18} className="text-emerald-400 animate-spin" /></div>}
+        {!overviewLoading && livePulse.length > 0 && <div className="grid grid-cols-3 gap-2">
+          {livePulse.map((item) => (
             <div key={item.label} className="glass-card p-3 text-center">
               <p className="text-[10px] text-slate-500 mb-1">{item.label}</p>
               <p className="text-base font-bold font-mono text-slate-100">{item.value}</p>
               <p className={`text-[10px] font-medium ${item.color === 'emerald' ? 'text-emerald-400' : item.color === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>{item.sublabel}</p>
             </div>
           ))}
-        </div>
+        </div>}
+        {!overviewLoading && livePulse.length === 0 && <div className="glass-card p-4 text-center"><p className="text-sm text-amber-400 mb-2">{overviewError || 'Live Market Pulse is temporarily unavailable.'}</p><button onClick={reloadOverview} className="text-xs text-emerald-400">Try Again</button></div>}
       </div>
 
       <div className="mb-5">
