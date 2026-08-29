@@ -8,6 +8,12 @@ import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
+// TwelveData free "Basic 8" plan: 8 credits/min, 800/day.
+// /quote consumes 1 credit per symbol. Cache for 2 minutes to reduce
+// request frequency and stay within the per-minute credit limit.
+const COMMODITIES_QUOTE_TTL_MS = 120_000;
+const COMMODITIES_CANDLE_TTL_MS = 120_000;
+
 const UNSUPPORTED_SYMBOLS = {
   OIL: 'Oil data is unavailable from TwelveData on the current plan.',
   CRUDE: 'Oil data is unavailable from TwelveData on the current plan.',
@@ -63,7 +69,7 @@ export default async function handler(req, res) {
     if (type === 'quote' || isBatch) {
       const symbolParam = mappedSymbols.join(',');
       const cacheKey = `td:quote:commodities:${symbols.sort().join(',')}`;
-      const cached = await get(cacheKey, ttlFor('batch'));
+      const cached = await get(cacheKey, COMMODITIES_QUOTE_TTL_MS);
 
       if (cached) {
         logCacheHit({ provider: 'twelvedata', key: cacheKey, ttlMs: ttlFor('batch'), valueSize: JSON.stringify(cached).length });
@@ -89,7 +95,7 @@ export default async function handler(req, res) {
           checkTdError(data);
         }
         recordSuccess('twelvedata');
-        await set(cacheKey, data, ttlFor('batch'));
+        await set(cacheKey, data, COMMODITIES_QUOTE_TTL_MS);
       }
 
       const parsed = parseTdQuote(data, mappedSymbols);
@@ -99,7 +105,7 @@ export default async function handler(req, res) {
         const mapped = mappedSymbols[i];
         if (parsed[mapped]) {
           result[symbols[i]] = parsed[mapped];
-          await set(`quote:commodities:${symbols[i]}`, parsed[mapped], ttlFor('quote'));
+          await set(`quote:commodities:${symbols[i]}`, parsed[mapped], COMMODITIES_QUOTE_TTL_MS);
         }
       }
 
@@ -109,7 +115,7 @@ export default async function handler(req, res) {
 
     const symbolParam = mappedSymbols[0];
     const cacheKey = `td:candles:commodities:${symbolParam.replace('/', '')}:${tdInterval}:${outputsize}`;
-    const cached = await get(cacheKey, ttlFor('candles', interval));
+    const cached = await get(cacheKey, COMMODITIES_CANDLE_TTL_MS);
 
     if (cached) {
       logCacheHit({ provider: 'twelvedata', key: cacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(cached).length });
@@ -135,7 +141,7 @@ export default async function handler(req, res) {
         checkTdError(data);
       }
       recordSuccess('twelvedata');
-      await set(cacheKey, data, ttlFor('candles', interval));
+      await set(cacheKey, data, COMMODITIES_CANDLE_TTL_MS);
     }
 
     const candles = (data.values || []).reverse().map(d => ({
