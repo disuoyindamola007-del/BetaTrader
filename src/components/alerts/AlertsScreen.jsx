@@ -33,32 +33,41 @@ export default function AlertsScreen() {
 
   const { data: cryptoData } = useCryptoBatch(cryptoSymbols.length > 0);
   const { data: nonCryptoData } = useBatchQuotes(nonCryptoSymbols, nonCryptoSymbols.length > 0);
-  const livePrices = useMemo(() => ({ ...cryptoData, ...nonCryptoData }), [cryptoData, nonCryptoData]);
+  const livePrices = useMemo(() => ({ ...(cryptoData || {}), ...(nonCryptoData || {}) }), [cryptoData, nonCryptoData]);
 
   // Whenever live prices update, check active alerts against them.
   useEffect(() => {
     if (alerts.length === 0 || Object.keys(livePrices).length === 0) return;
-    const result = checkAlerts(alerts, livePrices);
-    if (result.changed) {
-      setAlerts(result.alerts);
-      // Track newly triggered alerts for notification display
-      if (result.newlyTriggered.length > 0) {
-        setTriggeredAlerts(prev => [...prev, ...result.newlyTriggered]);
-        // Request browser notification permission
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission();
-        }
-        // Show browser notification for each triggered alert
-        result.newlyTriggered.forEach(alert => {
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(`Alert: ${alert.asset}`, {
-              body: `Price is now ${alert.condition} ${alert.value}`,
-              icon: '/vite.svg',
-              tag: `alert-${alert.id}`,
-            });
+    try {
+      const result = checkAlerts(alerts, livePrices);
+      if (result.changed) {
+        setAlerts(result.alerts);
+        // Track newly triggered alerts for notification display
+        if (result.newlyTriggered.length > 0) {
+          setTriggeredAlerts(prev => [...prev, ...result.newlyTriggered]);
+          // Request browser notification permission
+          if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
           }
-        });
+          // Show browser notification for each triggered alert
+          result.newlyTriggered.forEach(alert => {
+            if (!alert.id || !alert.asset) return; // Skip malformed alerts
+            if ('Notification' in window && Notification.permission === 'granted') {
+              try {
+                new Notification(`Alert: ${alert.asset}`, {
+                  body: `Price is now ${alert.condition} ${alert.value}`,
+                  icon: '/vite.svg',
+                  tag: `alert-${alert.id}`,
+                });
+              } catch (err) {
+                console.error('[Alerts] Notification error:', err);
+              }
+            }
+          });
+        }
       }
+    } catch (err) {
+      console.error('[Alerts] Error checking alerts:', err);
     }
   }, [livePrices]);
 
