@@ -2,6 +2,9 @@ import { get, set, ttlFor } from '../../lib/cache.js';
 import { validateMarketQuery } from '../../lib/validateMarketQuery.js';
 import { parseTdQuote, checkTdError } from '../../lib/twelveData.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
+import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
+import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
+import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
@@ -26,19 +29,33 @@ async function fetchFinnhub(url) {
     err.rateLimited = true;
     throw err;
   }
-  const res = await fetch(url);
-  if (res.status === 429) {
-    triggerRateLimitCooldown('finnhub');
-    const err = new Error('Finnhub rate limit reached');
-    err.rateLimited = true;
+  if (isCircuitOpen('finnhub')) {
+    const err = new Error('Finnhub circuit breaker open');
+    err.circuitOpen = true;
     throw err;
   }
-  if (!res.ok) throw new Error(`Finnhub fetch failed: ${res.status} ${res.statusText}`);
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
-    throw new Error(`Finnhub returned non-JSON content (${contentType || 'unknown content type'})`);
+
+  try {
+    const data = await fetchJsonWithTimeout(url, {}, { provider: 'finnhub' });
+    const contentType = data?.headers?.get?.('content-type') || '';
+    // fetchJsonWithTimeout already parses JSON; just validate
+    recordSuccess('finnhub');
+    return data;
+  } catch (error) {
+    if (error.timeout) {
+      recordFailure('finnhub');
+      throw new Error('Finnhub request timed out');
+    }
+    if (error.circuitOpen) throw error;
+    if (error.message?.includes('429')) {
+      triggerRateLimitCooldown('finnhub');
+      const err = new Error('Finnhub rate limit reached');
+      err.rateLimited = true;
+      throw err;
+    }
+    recordFailure('finnhub');
+    throw error;
   }
-  return res.json();
 }
 
 function normalizeFinnhubQuote(data) {
@@ -73,17 +90,31 @@ function normalizeFinnhubCandles(data) {
 async function fetchTwelveDataQuote(symbolParam, apiKey) {
   const cacheKey = `td:quote:stocks:${symbolParam}`;
   const cached = await get(cacheKey, ttlFor('batch'));
-  if (cached) return cached;
-  const response = await fetch(`${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${apiKey}`);
-  if (response.status === 429) {
-    triggerRateLimitCooldown('twelvedata');
-    const err = new Error('TwelveData rate limit reached');
-    err.rateLimited = true;
+  if (cached) {
+    logCacheHit({ provider: 'twelvedata', key: cacheKey, ttlMs: ttlFor('batch'), valueSize: JSON.stringify(cached).length });
+    return cached;
+  }
+  logCacheMiss({ provider: 'twelvedata', key: cacheKey });
+
+  if (isCircuitOpen('twelvedata')) {
+    const err = new Error('TwelveData circuit breaker open');
+    err.circuitOpen = true;
     throw err;
   }
-  if (!response.ok) throw new Error(`TwelveData quote fetch failed: ${response.status}`);
-  const data = await response.json();
+
+  const url = `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${apiKey}`;
+  let data;
+  try {
+    data = await fetchJsonWithTimeout(url, {}, { provider: 'twelvedata' });
+  } catch (error) {
+    if (error.timeout) {
+      recordFailure('twelvedata');
+      throw new Error('TwelveData quote request timed out');
+    }
+    throw error;
+  }
   checkTdError(data);
+  recordSuccess('twelvedata');
   await set(cacheKey, data, ttlFor('batch'));
   return data;
 }
@@ -92,17 +123,31 @@ async function fetchTwelveDataCandles(symbol, interval, outputsize, apiKey) {
   const tdInterval = twelveDataIntervalMap[interval] || '1day';
   const cacheKey = `td:candles:stocks:${symbol.replace('/', '')}:${tdInterval}:${outputsize}`;
   const cached = await get(cacheKey, ttlFor('candles', interval));
-  if (cached) return cached;
-  const response = await fetch(`${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${apiKey}`);
-  if (response.status === 429) {
-    triggerRateLimitCooldown('twelvedata');
-    const err = new Error('TwelveData rate limit reached');
-    err.rateLimited = true;
+  if (cached) {
+    logCacheHit({ provider: 'twelvedata', key: cacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(cached).length });
+    return cached;
+  }
+  logCacheMiss({ provider: 'twelvedata', key: cacheKey });
+
+  if (isCircuitOpen('twelvedata')) {
+    const err = new Error('TwelveData circuit breaker open');
+    err.circuitOpen = true;
     throw err;
   }
-  if (!response.ok) throw new Error(`TwelveData candles fetch failed: ${response.status}`);
-  const data = await response.json();
+
+  const url = `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${apiKey}`;
+  let data;
+  try {
+    data = await fetchJsonWithTimeout(url, {}, { provider: 'twelvedata' });
+  } catch (error) {
+    if (error.timeout) {
+      recordFailure('twelvedata');
+      throw new Error('TwelveData candles request timed out');
+    }
+    throw error;
+  }
   checkTdError(data);
+  recordSuccess('twelvedata');
   await set(cacheKey, data, ttlFor('candles', interval));
   return data;
 }
@@ -121,10 +166,30 @@ function normalizeTwelveDataCandles(data) {
 async function fetchAlphaVantageQuote(symbol, apiKey) {
   const cacheKey = `av:quote:${symbol}`;
   const cached = await get(cacheKey, ttlFor('quote'));
-  if (cached) return cached;
-  const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`);
-  if (!response.ok) throw new Error(`Alpha Vantage quote failed: ${response.status}`);
-  const data = await response.json();
+  if (cached) {
+    logCacheHit({ provider: 'alphavantage', key: cacheKey, ttlMs: ttlFor('quote'), valueSize: JSON.stringify(cached).length });
+    return cached;
+  }
+  logCacheMiss({ provider: 'alphavantage', key: cacheKey });
+
+  if (isCircuitOpen('alphavantage')) {
+    const err = new Error('Alpha Vantage circuit breaker open');
+    err.circuitOpen = true;
+    throw err;
+  }
+
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+  let data;
+  try {
+    data = await fetchJsonWithTimeout(url, {}, { provider: 'alphavantage' });
+  } catch (error) {
+    if (error.timeout) {
+      recordFailure('alphavantage');
+      throw new Error('Alpha Vantage quote request timed out');
+    }
+    throw error;
+  }
+  recordSuccess('alphavantage');
   await set(cacheKey, data, ttlFor('quote'));
   return data;
 }
@@ -134,10 +199,30 @@ async function fetchAlphaVantageCandles(symbol, interval, apiKey) {
   const avIntervalParam = interval === '1d' ? '' : `&interval=${interval}`;
   const cacheKey = `av:candles:${symbol}:${interval}`;
   const cached = await get(cacheKey, ttlFor('candles', interval));
-  if (cached) return cached;
-  const response = await fetch(`https://www.alphavantage.co/query?function=${avInterval}${avIntervalParam}&symbol=${symbol}&apikey=${apiKey}&outputsize=full`);
-  if (!response.ok) throw new Error(`Alpha Vantage candles failed: ${response.status}`);
-  const data = await response.json();
+  if (cached) {
+    logCacheHit({ provider: 'alphavantage', key: cacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(cached).length });
+    return cached;
+  }
+  logCacheMiss({ provider: 'alphavantage', key: cacheKey });
+
+  if (isCircuitOpen('alphavantage')) {
+    const err = new Error('Alpha Vantage circuit breaker open');
+    err.circuitOpen = true;
+    throw err;
+  }
+
+  const url = `https://www.alphavantage.co/query?function=${avInterval}${avIntervalParam}&symbol=${symbol}&apikey=${apiKey}&outputsize=full`;
+  let data;
+  try {
+    data = await fetchJsonWithTimeout(url, {}, { provider: 'alphavantage' });
+  } catch (error) {
+    if (error.timeout) {
+      recordFailure('alphavantage');
+      throw new Error('Alpha Vantage candles request timed out');
+    }
+    throw error;
+  }
+  recordSuccess('alphavantage');
   await set(cacheKey, data, ttlFor('candles', interval));
   return data;
 }
@@ -181,7 +266,7 @@ export default async function handler(req, res) {
       const result = {};
       const fallbackSymbols = [];
 
-      if (FINNHUB_API_KEY && !isRateLimited('finnhub')) {
+      if (FINNHUB_API_KEY && !isRateLimited('finnhub') && !isCircuitOpen('finnhub')) {
         let finnhubRateLimited = false;
         for (const sym of symbols) {
           if (finnhubRateLimited) { fallbackSymbols.push(sym); continue; }
@@ -190,23 +275,33 @@ export default async function handler(req, res) {
           const cacheKey = `fh:quote:${providerSym}`;
           const cached = await get(cacheKey, ttlFor('quote'));
 
-          let quote = null;
           if (cached) {
-            quote = cached;
-          } else {
-            try {
-              const data = await fetchFinnhub(`${FINNHUB_BASE}/quote?symbol=${encodeURIComponent(providerSym)}&token=${FINNHUB_API_KEY}`);
-              quote = normalizeFinnhubQuote(data);
-              if (quote) await set(cacheKey, quote, ttlFor('quote'));
-            } catch (err) {
-              if (err.rateLimited) {
-                console.error(`Finnhub rate-limited mid-batch — falling back remaining symbols to TwelveData/Alpha Vantage`);
-                finnhubRateLimited = true;
-                fallbackSymbols.push(sym);
-                continue;
-              }
-              console.error(`Finnhub quote failed for ${sym}:`, err.message);
+            logCacheHit({ provider: 'finnhub', key: cacheKey, ttlMs: ttlFor('quote'), valueSize: JSON.stringify(cached).length });
+            result[sym] = cached;
+            continue;
+          }
+          logCacheMiss({ provider: 'finnhub', key: cacheKey });
+
+          let quote = null;
+          try {
+            const url = `${FINNHUB_BASE}/quote?symbol=${encodeURIComponent(providerSym)}&token=${FINNHUB_API_KEY}`;
+            const data = await fetchFinnhub(url);
+            quote = normalizeFinnhubQuote(data);
+            if (quote) {
+              await set(cacheKey, quote, ttlFor('quote'));
             }
+          } catch (err) {
+            if (err.rateLimited) {
+              console.error(`Finnhub rate-limited mid-batch — falling back remaining symbols to TwelveData/Alpha Vantage`);
+              finnhubRateLimited = true;
+              fallbackSymbols.push(sym);
+              continue;
+            }
+            if (err.circuitOpen) {
+              fallbackSymbols.push(sym);
+              continue;
+            }
+            console.error(`Finnhub quote failed for ${sym}:`, err.message);
           }
           if (quote) {
             result[sym] = quote;
@@ -218,7 +313,7 @@ export default async function handler(req, res) {
         fallbackSymbols.push(...symbols);
       }
 
-      if (fallbackSymbols.length > 0 && TWELVE_DATA_API_KEY && !isRateLimited('twelvedata')) {
+      if (fallbackSymbols.length > 0 && TWELVE_DATA_API_KEY && !isRateLimited('twelvedata') && !isCircuitOpen('twelvedata')) {
         try {
           const providerSymbols = fallbackSymbols.map(mapProviderSymbol);
           const symbolParam = providerSymbols.join(',');
@@ -233,12 +328,14 @@ export default async function handler(req, res) {
             }
           }
         } catch (err) {
-          console.error('TwelveData fallback quote failed:', err.message);
+          if (!err.circuitOpen) {
+            console.error('TwelveData fallback quote failed:', err.message);
+          }
         }
       }
 
       const stillMissing = symbols.filter(s => !result[s]);
-      if (stillMissing.length > 0 && ALPHA_VANTAGE_API_KEY) {
+      if (stillMissing.length > 0 && ALPHA_VANTAGE_API_KEY && !isCircuitOpen('alphavantage')) {
         for (const sym of stillMissing) {
           const avSym = mapProviderSymbol(sym);
           try {
@@ -258,7 +355,9 @@ export default async function handler(req, res) {
               await set(`quote:stocks:${sym}`, quote, ttlFor('quote'));
             }
           } catch (err) {
-            console.error(`Alpha Vantage fallback quote failed for ${sym}:`, err.message);
+            if (!err.circuitOpen) {
+              console.error(`Alpha Vantage fallback quote failed for ${sym}:`, err.message);
+            }
           }
         }
       }
@@ -278,15 +377,17 @@ export default async function handler(req, res) {
     const targetSymbol = symbols[0];
     const providerSymbol = mapProviderSymbol(targetSymbol);
 
-    if (FINNHUB_API_KEY && interval !== '4h' && !isRateLimited('finnhub')) {
+    if (FINNHUB_API_KEY && interval !== '4h' && !isRateLimited('finnhub') && !isCircuitOpen('finnhub')) {
       const resolution = finnhubResolutionMap[interval];
       if (resolution) {
         const cacheKey = `fh:candles:${providerSymbol}:${resolution}:${outputsize}`;
         const cached = await get(cacheKey, ttlFor('candles', interval));
         let candles = null;
         if (cached) {
+          logCacheHit({ provider: 'finnhub', key: cacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(cached).length });
           candles = cached;
         } else {
+          logCacheMiss({ provider: 'finnhub', key: cacheKey });
           try {
             const now = Math.floor(Date.now() / 1000);
             const lookbackDays = interval === '1m' ? 2 : interval === '5m' ? 5 : interval === '15m' ? 10 : interval === '1h' ? 30 : interval === '1d' ? 365 : 730;
@@ -299,7 +400,9 @@ export default async function handler(req, res) {
               await set(cacheKey, candles, ttlFor('candles', interval));
             }
           } catch (err) {
-            console.error('Finnhub candles failed:', err.message);
+            if (!err.circuitOpen && !err.rateLimited) {
+              console.error('Finnhub candles failed:', err.message);
+            }
           }
         }
         if (candles && candles.length > 0) {
@@ -309,7 +412,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (TWELVE_DATA_API_KEY && !isRateLimited('twelvedata')) {
+    if (TWELVE_DATA_API_KEY && !isRateLimited('twelvedata') && !isCircuitOpen('twelvedata')) {
       try {
         const data = await fetchTwelveDataCandles(providerSymbol, interval, outputsize, TWELVE_DATA_API_KEY);
         const candles = normalizeTwelveDataCandles(data);
@@ -318,11 +421,13 @@ export default async function handler(req, res) {
           return res.status(200).json(candles);
         }
       } catch (err) {
-        console.error('TwelveData candles fallback failed:', err.message);
+        if (!err.circuitOpen) {
+          console.error('TwelveData candles fallback failed:', err.message);
+        }
       }
     }
 
-    if (ALPHA_VANTAGE_API_KEY) {
+    if (ALPHA_VANTAGE_API_KEY && !isCircuitOpen('alphavantage')) {
       try {
         const data = await fetchAlphaVantageCandles(providerSymbol, interval, ALPHA_VANTAGE_API_KEY);
         const candles = normalizeAlphaVantageCandles(data, interval);
@@ -331,7 +436,9 @@ export default async function handler(req, res) {
           return res.status(200).json(candles);
         }
       } catch (err) {
-        console.error('Alpha Vantage candles fallback failed:', err.message);
+        if (!err.circuitOpen) {
+          console.error('Alpha Vantage candles fallback failed:', err.message);
+        }
       }
     }
 
@@ -339,10 +446,11 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Stocks proxy error:', error.message);
-    const status = error.rateLimited ? 429 : 500;
+    const status = error.rateLimited ? 429 : error.circuitOpen ? 503 : 500;
     return res.status(status).json({
       error: error.message,
       rateLimited: error.rateLimited || false,
+      circuitOpen: error.circuitOpen || false,
     });
   }
 }

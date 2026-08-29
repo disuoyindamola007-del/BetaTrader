@@ -1,4 +1,7 @@
 import { get, set } from '../../lib/cache.js';
+import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
+import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
+import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const NEWS_TTL_MS = 5 * 60_000;
@@ -15,13 +18,28 @@ export default async function handler(req, res) {
   const cacheKey = 'news:general';
   try {
     const cached = await get(cacheKey, NEWS_TTL_MS);
-    if (cached) return res.status(200).json({ news: cached, cached: true });
+    if (cached) {
+      logCacheHit({ provider: 'finnhub', key: cacheKey, ttlMs: NEWS_TTL_MS, valueSize: JSON.stringify(cached).length });
+      return res.status(200).json({ news: cached, cached: true });
+    }
+    logCacheMiss({ provider: 'finnhub', key: cacheKey });
 
-    const response = await fetch(`${FINNHUB_BASE}/news?category=general&token=${apiKey}`);
-    if (response.status === 429) return res.status(429).json({ error: 'News is temporarily rate limited', rateLimited: true });
-    if (!response.ok) throw new Error(`Finnhub news failed: ${response.status}`);
+    if (isCircuitOpen('finnhub')) {
+      return res.status(503).json({ error: 'News provider temporarily unavailable', circuitOpen: true });
+    }
 
-    const data = await response.json();
+    const url = `${FINNHUB_BASE}/news?category=general&token=${apiKey}`;
+    let data;
+    try {
+      data = await fetchJsonWithTimeout(url, {}, { provider: 'finnhub' });
+    } catch (error) {
+      if (error.timeout) {
+        recordFailure('finnhub');
+        return res.status(408).json({ error: 'News request timed out' });
+      }
+      throw error;
+    }
+
     const news = (Array.isArray(data) ? data : [])
       .filter(item => item?.headline && item?.url)
       .map(item => ({
@@ -37,10 +55,15 @@ export default async function handler(req, res) {
       .slice(0, 30);
 
     await set(cacheKey, news, NEWS_TTL_MS);
+    recordSuccess('finnhub');
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=1800');
     return res.status(200).json({ news, cached: false });
   } catch (error) {
     console.error('News proxy error:', error.message);
-    return res.status(502).json({ error: 'News is temporarily unavailable' });
+    if (!error.message?.includes('timed out')) {
+      recordFailure('finnhub');
+    }
+    const status = error.message?.includes('429') ? 429 : 502;
+    return res.status(status).json({ error: 'News is temporarily unavailable' });
   }
 }

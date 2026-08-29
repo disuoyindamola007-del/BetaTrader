@@ -1,5 +1,8 @@
 import { get, set } from '../../lib/cache.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
+import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
+import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
+import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
@@ -25,13 +28,25 @@ function colorForChange(change) {
 
 async function fetchJson(url, provider, options = {}) {
   if (provider && isRateLimited(provider)) throw new Error(`${provider} cooldown active`);
-  const response = await fetch(url, options);
-  if (response.status === 429) {
-    if (provider) triggerRateLimitCooldown(provider);
-    throw new Error(`${provider || 'Provider'} rate limit reached`);
+  if (provider && isCircuitOpen(provider)) throw new Error(`${provider} circuit breaker open`);
+
+  try {
+    const data = await fetchJsonWithTimeout(url, options, { provider });
+    if (provider) recordSuccess(provider);
+    return data;
+  } catch (error) {
+    if (error.timeout) {
+      if (provider) recordFailure(provider);
+      throw new Error(`${provider || 'Provider'} request timed out`);
+    }
+    if (error.message?.includes('429')) {
+      if (provider) triggerRateLimitCooldown(provider);
+      throw new Error(`${provider || 'Provider'} rate limit reached`);
+    }
+    if (error.message?.includes('circuit breaker open')) throw error;
+    if (provider) recordFailure(provider);
+    throw error;
   }
-  if (!response.ok) throw new Error(`${provider || 'Provider'} request failed: ${response.status}`);
-  return response.json();
 }
 
 async function loadCryptoPulse() {
@@ -39,18 +54,21 @@ async function loadCryptoPulse() {
   const headers = { accept: 'application/json' };
   if (apiKey) headers['x-cg-demo-api-key'] = apiKey;
 
-  const [globalData, prices] = await Promise.all([
+  const [globalResult, pricesResult] = await Promise.allSettled([
     fetchJson(`${COINGECKO_BASE}/global`, 'coingecko', { headers }),
     fetchJson(`${COINGECKO_BASE}/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true`, 'coingecko', { headers }),
   ]);
 
+  const globalData = globalResult.status === 'fulfilled' ? globalResult.value : null;
+  const pricesData = pricesResult.status === 'fulfilled' ? pricesResult.value : null;
+
   return {
     btcDominance: number(globalData?.data?.market_cap_percentage?.btc),
     cryptoMarketChange: number(globalData?.data?.market_cap_change_percentage_24h_usd),
-    btcPrice: number(prices?.bitcoin?.usd),
-    btcChange: number(prices?.bitcoin?.usd_24h_change),
-    ethPrice: number(prices?.ethereum?.usd),
-    ethChange: number(prices?.ethereum?.usd_24h_change),
+    btcPrice: number(pricesData?.bitcoin?.usd),
+    btcChange: number(pricesData?.bitcoin?.usd_24h_change),
+    ethPrice: number(pricesData?.ethereum?.usd),
+    ethChange: number(pricesData?.ethereum?.usd_24h_change),
   };
 }
 
@@ -64,12 +82,12 @@ async function loadMarketProxies() {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) throw new Error('Finnhub is not configured');
   const symbols = ['SPY', 'QQQ', 'GLD'];
-  const responses = await Promise.all(symbols.map(symbol =>
+  const responses = await Promise.allSettled(symbols.map(symbol =>
     fetchJson(`${FINNHUB_BASE}/quote?symbol=${symbol}&token=${apiKey}`, 'finnhub')
   ));
   return Object.fromEntries(symbols.map((symbol, index) => [symbol, {
-    price: number(responses[index]?.c),
-    changePct: number(responses[index]?.dp),
+    price: number(responses[index]?.value?.c),
+    changePct: number(responses[index]?.value?.dp),
   }]));
 }
 
@@ -104,7 +122,11 @@ function makePulse(crypto, fearGreed, proxies) {
 
 async function loadPulse() {
   const cached = await get('market:overview:pulse:v1', PULSE_TTL_MS);
-  if (cached) return { ...cached, cached: true };
+  if (cached) {
+    logCacheHit({ provider: 'market-overview', key: 'market:overview:pulse:v1', ttlMs: PULSE_TTL_MS, valueSize: JSON.stringify(cached).length });
+    return { ...cached, cached: true };
+  }
+  logCacheMiss({ provider: 'market-overview', key: 'market:overview:pulse:v1' });
 
   const [cryptoResult, fearResult, proxyResult] = await Promise.allSettled([
     loadCryptoPulse(), loadFearAndGreed(), loadMarketProxies(),
@@ -122,11 +144,16 @@ async function loadPulse() {
 
 async function loadHeadlines() {
   const cached = await get('news:general', 5 * 60_000);
-  if (Array.isArray(cached) && cached.length > 0) return cached.slice(0, 8).map(item => item.headline);
+  if (Array.isArray(cached) && cached.length > 0) {
+    logCacheHit({ provider: 'finnhub', key: 'news:general', ttlMs: 5 * 60_000, valueSize: JSON.stringify(cached).length });
+    return cached.slice(0, 8).map(item => item.headline);
+  }
+  logCacheMiss({ provider: 'finnhub', key: 'news:general' });
 
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) return [];
   try {
+    if (isCircuitOpen('finnhub')) return [];
     const data = await fetchJson(`${FINNHUB_BASE}/news?category=general&token=${apiKey}`, 'finnhub');
     return (Array.isArray(data) ? data : []).filter(item => item?.headline).slice(0, 8).map(item => item.headline);
   } catch (error) {
@@ -140,49 +167,73 @@ async function loadBriefing(pulseData) {
   const bucket = `${now.toISOString().slice(0, 10)}:${Math.floor(now.getUTCHours() / 4)}`;
   const cacheKey = `market:overview:briefing:v1:${bucket}`;
   const cached = await get(cacheKey, BRIEFING_TTL_MS);
-  if (cached) return { ...cached, cached: true };
+  if (cached) {
+    logCacheHit({ provider: 'groq', key: cacheKey, ttlMs: BRIEFING_TTL_MS, valueSize: JSON.stringify(cached).length });
+    return { ...cached, cached: true };
+  }
+  logCacheMiss({ provider: 'groq', key: cacheKey });
+
+  if (isCircuitOpen('groq')) {
+    throw new Error('Groq circuit breaker open');
+  }
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error('AI briefing is not configured');
   const headlines = await loadHeadlines();
 
-  const response = await fetch(GROQ_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      temperature: 0.2,
-      max_completion_tokens: 1200,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: `You create concise market briefings for retail traders using only supplied live data and headlines. Return valid JSON only with this exact shape: {"sentiment":"","confidence":0,"summary":"","volatility":"","keyRisk":"","keyDrivers":[""],"watchNext":[""]}. Confidence must be an integer from 0 to 100 and reflect confidence in the interpretation, not a trade signal. Use 2-3 sentences for summary, 2-4 key drivers, and 2-4 watch items. Do not invent events, levels, figures, or dates. Describe uncertain impacts as possibilities. No financial advice.`,
-        },
-        {
-          role: 'user',
-          content: `Live market data captured at ${pulseData.generatedAt}:\n${JSON.stringify(pulseData.raw)}\nCurrent headlines (may be empty):\n${JSON.stringify(headlines)}`,
-        },
-      ],
-    }),
-  });
-  if (response.status === 429) throw new Error('AI briefing is temporarily rate limited');
-  if (!response.ok) {
-    const body = await response.text();
-    console.error('Groq briefing provider error:', response.status, body.slice(0, 300));
-    throw new Error(`Groq briefing failed: ${response.status}`);
-  }
-  const data = await response.json();
-  const briefing = JSON.parse(data?.choices?.[0]?.message?.content || '{}');
-  const valid = briefing?.sentiment && Number.isFinite(Number(briefing.confidence))
-    && briefing?.summary && briefing?.volatility && briefing?.keyRisk
-    && Array.isArray(briefing.keyDrivers) && Array.isArray(briefing.watchNext);
-  if (!valid) throw new Error('Incomplete AI briefing');
-  briefing.confidence = Math.max(0, Math.min(100, Math.round(Number(briefing.confidence))));
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
-  const result = { briefing, generatedAt: new Date().toISOString() };
-  await set(cacheKey, result, BRIEFING_TTL_MS);
-  return { ...result, cached: false };
+    const response = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        temperature: 0.2,
+        max_completion_tokens: 1200,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You create concise market briefings for retail traders using only supplied live data and headlines. Return valid JSON only with this exact shape: {"sentiment":"","confidence":0,"summary":"","volatility":"","keyRisk":"","keyDrivers":[""],"watchNext":[""]}. Confidence must be an integer from 0 to 100 and reflect confidence in the interpretation, not a trade signal. Use 2-3 sentences for summary, 2-4 key drivers, and 2-4 watch items. Do not invent events, levels, figures, or dates. Describe uncertain impacts as possibilities. No financial advice.`,
+          },
+          {
+            role: 'user',
+            content: `Live market data captured at ${pulseData.generatedAt}:\n${JSON.stringify(pulseData.raw)}\nCurrent headlines (may be empty):\n${JSON.stringify(headlines)}`,
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (response.status === 429) throw new Error('AI briefing is temporarily rate limited');
+    if (!response.ok) {
+      const body = await response.text();
+      console.error('Groq briefing provider error:', response.status, body.slice(0, 300));
+      recordFailure('groq');
+      throw new Error(`Groq briefing failed: ${response.status}`);
+    }
+    const data = await response.json();
+    const briefing = JSON.parse(data?.choices?.[0]?.message?.content || '{}');
+    const valid = briefing?.sentiment && Number.isFinite(Number(briefing.confidence))
+      && briefing?.summary && briefing?.volatility && briefing?.keyRisk
+      && Array.isArray(briefing.keyDrivers) && Array.isArray(briefing.watchNext);
+    if (!valid) throw new Error('Incomplete AI briefing');
+    briefing.confidence = Math.max(0, Math.min(100, Math.round(Number(briefing.confidence))));
+
+    recordSuccess('groq');
+    const result = { briefing, generatedAt: new Date().toISOString() };
+    await set(cacheKey, result, BRIEFING_TTL_MS);
+    return { ...result, cached: false };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      recordFailure('groq');
+      throw new Error('AI briefing request timed out');
+    }
+    throw error;
+  }
 }
 
 export default async function handler(req, res) {
@@ -209,7 +260,10 @@ export default async function handler(req, res) {
       });
     } catch (error) {
       console.error('Market briefing error:', error.message);
-      return res.status(503).json({ error: 'Daily AI Briefing is temporarily unavailable' });
+      const status = error.message?.includes('circuit breaker') ? 503 :
+                     error.message?.includes('timed out') ? 408 :
+                     error.message?.includes('rate limited') ? 429 : 503;
+      return res.status(status).json({ error: 'Daily AI Briefing is temporarily unavailable' });
     }
   } catch (error) {
     console.error('Market overview error:', error.message);

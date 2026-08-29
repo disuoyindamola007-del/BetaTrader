@@ -1,4 +1,5 @@
 import { get, set } from '../../lib/cache.js';
+import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'openai/gpt-oss-120b';
@@ -43,10 +44,18 @@ export default async function handler(req, res) {
   if (Date.now() < groqCooldownUntil) {
     return res.status(429).json({ error: 'AI context is temporarily unavailable', rateLimited: true });
   }
+
+  if (isCircuitOpen('groq')) {
+    return res.status(503).json({ error: 'AI context provider temporarily unavailable', circuitOpen: true });
+  }
+
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'AI context is not configured' });
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
     const response = await fetch(GROQ_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -65,26 +74,37 @@ export default async function handler(req, res) {
           },
         ],
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     if (response.status === 429) {
       groqCooldownUntil = Date.now() + 60_000;
       return res.status(429).json({ error: 'AI context is temporarily unavailable', rateLimited: true });
     }
     if (!response.ok) {
+      recordFailure('groq');
       console.error('Market explainer Groq error:', response.status, (await response.text()).slice(0, 300));
       return res.status(502).json({ error: 'AI context is temporarily unavailable' });
     }
 
     const data = await response.json();
     const explanation = data?.choices?.[0]?.message?.content?.trim();
-    if (!explanation) return res.status(502).json({ error: 'AI context is temporarily unavailable' });
+    if (!explanation) {
+      recordFailure('groq');
+      return res.status(502).json({ error: 'AI context is temporarily unavailable' });
+    }
 
+    recordSuccess('groq');
     await set(cacheKey, { explanation }, EXPLANATION_TTL_MS);
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ explanation, cached: false });
   } catch (error) {
     console.error('Market explainer error:', error.message);
+    if (error.name === 'AbortError') {
+      recordFailure('groq');
+      return res.status(408).json({ error: 'AI context request timed out' });
+    }
     return res.status(502).json({ error: 'AI context is temporarily unavailable' });
   }
 }

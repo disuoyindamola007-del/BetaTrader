@@ -1,4 +1,6 @@
 import { get, set } from '../../lib/cache.js';
+import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
+import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'openai/gpt-oss-120b'; // llama-3.3-70b-versatile deprecated by Groq (June 2026), shutting down Aug 2026
@@ -56,6 +58,10 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'AI analysis rate limit reached, try again shortly', rateLimited: true });
   }
 
+  if (isCircuitOpen('groq')) {
+    return res.status(503).json({ error: 'AI analysis provider temporarily unavailable', circuitOpen: true });
+  }
+
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     console.error('GROQ_API_KEY is not set in this environment');
@@ -63,7 +69,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const groqRes = await fetch(GROQ_URL, {
+    const response = await fetch(GROQ_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -80,31 +86,35 @@ export default async function handler(req, res) {
       }),
     });
 
-    if (groqRes.status === 429) {
+    if (response.status === 429) {
       groqCooldownUntil = Date.now() + 60_000;
       return res.status(429).json({ error: 'AI analysis rate limit reached, try again shortly', rateLimited: true });
     }
 
-    if (!groqRes.ok) {
-      const body = await groqRes.text();
-      console.error('Groq error:', groqRes.status, body.slice(0, 300));
+    if (!response.ok) {
+      const body = await response.text();
+      console.error('Groq error:', response.status, body.slice(0, 300));
+      recordFailure('groq');
       return res.status(502).json({ error: 'AI analysis provider error' });
     }
 
-    const data = await groqRes.json();
+    const data = await response.json();
     const analysis = data?.choices?.[0]?.message?.content?.trim();
 
     if (!analysis) {
       console.error('Unexpected Groq response shape:', JSON.stringify(data).slice(0, 300));
+      recordFailure('groq');
       return res.status(502).json({ error: 'AI analysis returned an empty response' });
     }
 
+    recordSuccess('groq');
     await set(cacheKey, analysis, ANALYSIS_TTL_MS);
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ analysis, cached: false });
 
   } catch (error) {
     console.error('Analyze proxy error:', error.message);
+    recordFailure('groq');
     return res.status(500).json({ error: 'Failed to reach AI analysis provider' });
   }
 }

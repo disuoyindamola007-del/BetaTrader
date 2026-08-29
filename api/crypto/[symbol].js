@@ -1,6 +1,9 @@
 import { get, set, ttlFor } from '../../lib/cache.js';
 import { validateMarketQuery } from '../../lib/validateMarketQuery.js';
 import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitState.js';
+import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
+import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
+import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY || process.env.COINGECKO_DEMO_API_KEY || '';
@@ -33,30 +36,37 @@ async function fetchCoinGecko(url) {
     throw err;
   }
 
-  const headers = { accept: 'application/json' };
-  if (COINGECKO_API_KEY) headers['x-cg-demo-api-key'] = COINGECKO_API_KEY;
-
-  const res = await fetch(url, { headers });
-
-  if (res.status === 429) {
-    triggerRateLimitCooldown('coingecko');
-    const err = new Error('CoinGecko rate limit reached');
-    err.rateLimited = true;
+  if (isCircuitOpen('coingecko')) {
+    const err = new Error('CoinGecko circuit breaker open');
+    err.circuitOpen = true;
     throw err;
   }
 
-  if (!res.ok) {
-    throw new Error(`CoinGecko fetch failed: ${res.status} ${res.statusText}`);
-  }
+  const headers = { accept: 'application/json' };
+  if (COINGECKO_API_KEY) headers['x-cg-demo-api-key'] = COINGECKO_API_KEY;
 
-  return res.json();
+  try {
+    const data = await fetchJsonWithTimeout(url, { headers }, { provider: 'coingecko' });
+    recordSuccess('coingecko');
+    return data;
+  } catch (error) {
+    if (error.timeout || error.circuitOpen) throw error;
+    if (error.message?.includes('429')) {
+      triggerRateLimitCooldown('coingecko');
+      const err = new Error('CoinGecko rate limit reached');
+      err.rateLimited = true;
+      throw err;
+    }
+    recordFailure('coingecko');
+    throw error;
+  }
 }
 
 function normalizeStats(id, coin) {
   const price = coin.usd;
   const changePct = coin.usd_24h_change ?? 0;
   const change = price * (changePct / 100);
-  const volume = coin.usd_24h_vol ?? 0;
+  const volume = coin.usd_24hr_vol ?? 0;
 
   const high24h = price * (1 + Math.abs(changePct) / 100);
   const low24h = price * (1 - Math.abs(changePct) / 100);
@@ -83,6 +93,12 @@ export default async function handler(req, res) {
       const requestedId = providerId ? getId(symbol, providerId) : null;
       const cacheKey = requestedId ? `cg:quote:${requestedId}` : 'cg:batch:quote';
       const cached = await get(cacheKey, ttlFor(requestedId ? 'quote' : 'batch'));
+
+      if (cached) {
+        logCacheHit({ provider: 'coingecko', key: cacheKey, ttlMs: ttlFor(requestedId ? 'quote' : 'batch'), valueSize: JSON.stringify(cached).length });
+      } else {
+        logCacheMiss({ provider: 'coingecko', key: cacheKey });
+      }
 
       let data;
       if (cached) {
@@ -134,6 +150,12 @@ export default async function handler(req, res) {
     const cacheKey = `cg:ohlc:${id}:${days}`;
     const cached = await get(cacheKey, ttlFor('candles', interval));
 
+    if (cached) {
+      logCacheHit({ provider: 'coingecko', key: cacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(cached).length });
+    } else {
+      logCacheMiss({ provider: 'coingecko', key: cacheKey });
+    }
+
     let data;
     if (cached) {
       data = cached;
@@ -162,10 +184,11 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Crypto proxy error:', error.message);
-    const status = error.rateLimited ? 429 : 500;
+    const status = error.rateLimited ? 429 : error.circuitOpen ? 503 : 500;
     return res.status(status).json({
       error: error.message,
       rateLimited: error.rateLimited || false,
+      circuitOpen: error.circuitOpen || false,
     });
   }
 }

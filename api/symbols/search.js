@@ -16,7 +16,7 @@ function cleanSymbol(value) {
   return String(value || '').trim().toUpperCase();
 }
 
-function uniqueResults(results) {
+function uniqueResult(results) {
   const seen = new Set();
   return results
     .filter(item => item?.symbol && item?.providerSymbol)
@@ -52,9 +52,18 @@ function isSupportedSearchResult(result) {
 }
 
 async function providerJson(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) throw new Error(`Provider search failed: ${response.status}`);
-  return response.json();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`Provider search failed: ${response.status}`);
+    return response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') throw new Error('Provider search timed out');
+    throw error;
+  }
 }
 
 async function searchCoinGecko(query) {
@@ -128,7 +137,7 @@ export default async function handler(req, res) {
     for (const item of settled) {
       if (item.status === 'rejected') console.error('Symbol provider search failed:', item.reason?.message || item.reason);
     }
-    const results = uniqueResults(settled.flatMap(item => item.status === 'fulfilled' ? item.value : []));
+    const results = uniqueResult(settled.flatMap(item => item.status === 'fulfilled' ? item.value : []));
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=3600');
     return res.status(200).json({ results });
   } catch (error) {
