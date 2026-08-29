@@ -3,6 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 const BRIEFING_CACHE_KEY = 'betatrader:briefing:v1';
 const BRIEFING_CACHE_TTL_MS = 3 * 60 * 60_000; // 3 hours (middle of 2-4h window)
 
+const PULSE_CACHE_KEY = 'betatrader:pulse:v1';
+const PULSE_CACHE_TTL_MS = 10 * 60_000; // 10 minutes — reduces server load on Home screen opens
+
 function getCachedBriefing() {
   try {
     const raw = localStorage.getItem(BRIEFING_CACHE_KEY);
@@ -23,6 +26,32 @@ function setCachedBriefing(data) {
     localStorage.setItem(BRIEFING_CACHE_KEY, JSON.stringify({
       data,
       expiresAt: Date.now() + BRIEFING_CACHE_TTL_MS,
+    }));
+  } catch {
+    // localStorage unavailable or full — non-fatal, just skip caching
+  }
+}
+
+function getCachedPulse() {
+  try {
+    const raw = localStorage.getItem(PULSE_CACHE_KEY);
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    if (Date.now() > entry.expiresAt) {
+      localStorage.removeItem(PULSE_CACHE_KEY);
+      return null;
+    }
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedPulse(data) {
+  try {
+    localStorage.setItem(PULSE_CACHE_KEY, JSON.stringify({
+      data,
+      expiresAt: Date.now() + PULSE_CACHE_TTL_MS,
     }));
   } catch {
     // localStorage unavailable or full — non-fatal, just skip caching
@@ -53,12 +82,26 @@ export function useMarketOverview() {
   const [briefingError, setBriefingError] = useState(null);
 
   const loadPulse = useCallback(async () => {
+    // Check client-side cache first (10-minute TTL)
+    const cached = getCachedPulse();
+    if (cached) {
+      setPulse(Array.isArray(cached.pulse) ? cached.pulse : []);
+      setPulseGeneratedAt(cached.pulseGeneratedAt || null);
+      setPulseError(null);
+      setPulseLoading(false);
+      return;
+    }
+
     setPulseLoading(true);
     try {
       const result = await requestOverview('pulse');
-      setPulse(Array.isArray(result.pulse) ? result.pulse : []);
-      setPulseGeneratedAt(result.pulseGeneratedAt || null);
+      const pulseData = Array.isArray(result.pulse) ? result.pulse : [];
+      const generatedAt = result.pulseGeneratedAt || null;
+      setPulse(pulseData);
+      setPulseGeneratedAt(generatedAt);
       setPulseError(null);
+      // Cache the successful response client-side for next Home screen opens
+      setCachedPulse({ pulse: pulseData, pulseGeneratedAt: generatedAt });
     } catch (err) {
       setPulseError(err.name === 'AbortError' ? 'Live Market Pulse took too long to load.' : err.message);
     } finally {
