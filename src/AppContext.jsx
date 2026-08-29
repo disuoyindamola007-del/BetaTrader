@@ -13,6 +13,28 @@ export function AppProvider({ children }) {
     }
   });
 
+  const [selectedAsset, setSelectedAsset] = useState(() => {
+    try {
+      // Restore from URL param on page load/refresh
+      const params = new URLSearchParams(window.location.search);
+      const assetParam = params.get('asset');
+      if (assetParam) {
+        const saved = localStorage.getItem('betatrader:selectedAsset');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.symbol === assetParam) {
+            return parsed;
+          }
+        }
+      }
+      // Fallback to localStorage
+      const saved = localStorage.getItem('betatrader:selectedAsset');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   // Persist activeTab to localStorage whenever it changes
   useEffect(() => {
     try {
@@ -20,7 +42,23 @@ export function AppProvider({ children }) {
     } catch { /* ignore */ }
   }, [activeTab]);
 
-  const [selectedAsset, setSelectedAsset] = useState(null);
+  // Persist selectedAsset to localStorage and URL params whenever it changes
+  useEffect(() => {
+    try {
+      if (selectedAsset) {
+        localStorage.setItem('betatrader:selectedAsset', JSON.stringify(selectedAsset));
+        // Update URL without triggering navigation
+        const params = new URLSearchParams(window.location.search);
+        params.set('asset', selectedAsset.symbol);
+        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+      } else {
+        localStorage.removeItem('betatrader:selectedAsset');
+        const params = new URLSearchParams(window.location.search);
+        params.delete('asset');
+        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+      }
+    } catch { /* ignore */ }
+  }, [selectedAsset]);
   const [selectedNews, setSelectedNews] = useState(null);
   const [selectedPulseMetric, setSelectedPulseMetric] = useState(null);
   const [marketSearchRequest, setMarketSearchRequest] = useState(0);

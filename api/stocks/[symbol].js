@@ -377,40 +377,9 @@ export default async function handler(req, res) {
     const targetSymbol = symbols[0];
     const providerSymbol = mapProviderSymbol(targetSymbol);
 
-    if (FINNHUB_API_KEY && interval !== '4h' && !isRateLimited('finnhub') && !isCircuitOpen('finnhub')) {
-      const resolution = finnhubResolutionMap[interval];
-      if (resolution) {
-        const cacheKey = `fh:candles:${providerSymbol}:${resolution}:${outputsize}`;
-        const cached = await get(cacheKey, ttlFor('candles', interval));
-        let candles = null;
-        if (cached) {
-          logCacheHit({ provider: 'finnhub', key: cacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(cached).length });
-          candles = cached;
-        } else {
-          logCacheMiss({ provider: 'finnhub', key: cacheKey });
-          try {
-            const now = Math.floor(Date.now() / 1000);
-            const lookbackDays = interval === '1m' ? 2 : interval === '5m' ? 5 : interval === '15m' ? 10 : interval === '1h' ? 30 : interval === '1d' ? 365 : 730;
-            const from = now - (lookbackDays * 86400);
-            const url = `${FINNHUB_BASE}/stock/candle?symbol=${encodeURIComponent(providerSymbol)}&resolution=${resolution}&from=${from}&to=${now}&token=${FINNHUB_API_KEY}`;
-            const data = await fetchFinnhub(url);
-            candles = normalizeFinnhubCandles(data);
-            if (candles) {
-              if (candles.length > outputsize) candles = candles.slice(candles.length - outputsize);
-              await set(cacheKey, candles, ttlFor('candles', interval));
-            }
-          } catch (err) {
-            if (!err.circuitOpen && !err.rateLimited) {
-              console.error('Finnhub candles failed:', err.message);
-            }
-          }
-        }
-        if (candles && candles.length > 0) {
-          res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-          return res.status(200).json(candles);
-        }
-      }
-    }
+    // Finnhub free tier does not support candle data for stocks (returns 403).
+    // Skip Finnhub entirely for candles and route straight to TwelveData → Alpha Vantage.
+    // Finnhub is still used for quotes above.
 
     if (TWELVE_DATA_API_KEY && !isRateLimited('twelvedata') && !isCircuitOpen('twelvedata')) {
       try {
