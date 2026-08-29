@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BookOpen, Plus, BarChart3, TrendingUp, TrendingDown, Trash2, X, ChevronRight, Calendar, Clock, Leaf, ShieldCheck, AlertTriangle, Zap, ArrowUp, ArrowDown, Minus } from 'lucide-react';
 import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
-import { getTrades, createTrade, deleteTrade } from '../../services/journalService.js';
+import { getTrades, createTrade, deleteTrade, saveTrades } from '../../services/journalService.js';
 
 const TIMEFRAME_OPTIONS = ['5m', '15m', '30m', '1H', '4H', '8H', '1D'];
 const EMOTIONS = [
@@ -226,6 +226,10 @@ export default function JournalScreen() {
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [deleteConfirmTrade, setDeleteConfirmTrade] = useState(null);
   const [swipedId, setSwipedId] = useState(null); // for swipe-to-delete
+  const [showOutcomeModal, setShowOutcomeModal] = useState(false);
+  const [outcomeTrade, setOutcomeTrade] = useState(null);
+  const [outcomeResult, setOutcomeResult] = useState('');
+  const [outcomeExitPrice, setOutcomeExitPrice] = useState('');
   const { results: searchResults, isLoading: searchLoading } = useSymbolSearch(searchQuery);
 
   // Refresh trades from localStorage whenever switching to Performance tab
@@ -419,6 +423,44 @@ export default function JournalScreen() {
     const updated = deleteTrade(trade.id);
     setTrades(updated);
     setDeleteConfirmTrade(null);
+  };
+
+  const handleSetOutcome = () => {
+    if (!outcomeTrade || !outcomeResult || !outcomeExitPrice) return;
+    const exit = parseFloat(outcomeExitPrice);
+    if (Number.isNaN(exit)) return;
+
+    const updated = setTrades(prevTrades => {
+      const trades = Array.isArray(prevTrades) ? prevTrades : getTrades();
+      const updatedTrades = trades.map(t => {
+        if (t.id === outcomeTrade.id) {
+          return {
+            ...t,
+            status: 'closed',
+            exit: String(exit),
+            result: outcomeResult,
+          };
+        }
+        return t;
+      });
+      saveTrades(updatedTrades);
+      return updatedTrades;
+    });
+    setTrades(updated);
+    setShowOutcomeModal(false);
+    setOutcomeTrade(null);
+    setOutcomeResult('');
+    setOutcomeExitPrice('');
+    // Refresh selectedTrade to show updated state
+    const refreshed = updated.find(t => t.id === outcomeTrade.id);
+    if (refreshed) setSelectedTrade(refreshed);
+  };
+
+  const handleOpenOutcome = (trade) => {
+    setOutcomeTrade(trade);
+    setOutcomeResult('');
+    setOutcomeExitPrice('');
+    setShowOutcomeModal(true);
   };
 
   const selectSearchResult = (result) => {
@@ -801,12 +843,21 @@ export default function JournalScreen() {
               >
                 <Trash2 size={16} /> Delete Trade
               </button>
-              <button
-                onClick={() => setSelectedTrade(null)}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
-              >
-                Back
-              </button>
+              {selectedTrade.status === 'open' ? (
+                <button
+                  onClick={() => handleOpenOutcome(selectedTrade)}
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold bg-emerald-500 text-slate-950 hover:bg-emerald-600 transition-colors"
+                >
+                  Set Outcome
+                </button>
+              ) : (
+                <button
+                  onClick={() => setSelectedTrade(null)}
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                >
+                  Back
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1396,6 +1447,87 @@ export default function JournalScreen() {
                 className="flex-1 py-3 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Set Outcome Modal */}
+      {showOutcomeModal && outcomeTrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowOutcomeModal(false)}>
+          <div className="bg-slate-900 w-full sm:w-[440px] rounded-2xl border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-700 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                <TrendingUp size={20} className="text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-200">Set Trade Outcome</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{outcomeTrade.asset} • {outcomeTrade.direction === 'buy' ? 'Long' : 'Short'}</p>
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Exit Price *</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Enter exit price"
+                  value={outcomeExitPrice}
+                  onChange={e => setOutcomeExitPrice(e.target.value)}
+                  className="w-full input-field"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">Result *</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setOutcomeResult('win')}
+                    className={`py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+                      outcomeResult === 'win'
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                    }`}
+                  >
+                    <TrendingUp size={16} /> Win
+                  </button>
+                  <button
+                    onClick={() => setOutcomeResult('loss')}
+                    className={`py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+                      outcomeResult === 'loss'
+                        ? 'bg-red-500 text-white'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                    }`}
+                  >
+                    <TrendingDown size={16} /> Loss
+                  </button>
+                </div>
+              </div>
+              {outcomeExitPrice && outcomeResult && (
+                <div className="bg-slate-800/50 rounded-xl p-3">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Preview</p>
+                  <p className="text-sm text-slate-300">
+                    Exit: <span className="font-mono text-slate-200">${Number(outcomeExitPrice).toFixed(4)}</span> •
+                    Result: <span className={`font-bold ${outcomeResult === 'win' ? 'text-emerald-400' : 'text-red-400'}`}>{outcomeResult}</span>
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1">This action is final — the trade will be marked as closed and cannot be changed.</p>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 p-4 border-t border-slate-700">
+              <button
+                onClick={() => setShowOutcomeModal(false)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSetOutcome}
+                disabled={!outcomeExitPrice || !outcomeResult}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-emerald-500 text-slate-950 hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm Outcome
               </button>
             </div>
           </div>

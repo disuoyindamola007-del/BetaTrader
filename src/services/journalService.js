@@ -29,6 +29,8 @@ export function getTrades() {
   return loadTrades();
 }
 
+export { saveTrades };
+
 // trade: { asset, direction, timeframe, entry, exit, stopLoss, takeProfit,
 //          lotSize, result, pl, bias, emotion, strategy, notes }
 // pl and result are entered directly by the user rather than derived —

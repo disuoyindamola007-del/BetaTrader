@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Bell, Plus, Trash2, X } from 'lucide-react';
+import { Bell, Plus, Trash2, X, AlertCircle } from 'lucide-react';
 import { useCryptoBatch, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { getCategory } from '../../services/marketDataService.js';
 import { getAlerts, createAlert, deleteAlert, checkAlerts } from '../../services/alertsService.js';
@@ -11,6 +11,8 @@ export default function AlertsScreen() {
   const [formCondition, setFormCondition] = useState('above');
   const [formValue, setFormValue] = useState('');
   const [formError, setFormError] = useState('');
+  const [deleteConfirmAlert, setDeleteConfirmAlert] = useState(null);
+  const [triggeredAlerts, setTriggeredAlerts] = useState([]);
 
   // Split alert symbols by category so we can fetch live prices for
   // whichever assets currently have active alerts on them.
@@ -26,7 +28,27 @@ export default function AlertsScreen() {
   useEffect(() => {
     if (alerts.length === 0 || Object.keys(livePrices).length === 0) return;
     const result = checkAlerts(alerts, livePrices);
-    if (result.changed) setAlerts(result.alerts);
+    if (result.changed) {
+      setAlerts(result.alerts);
+      // Track newly triggered alerts for notification display
+      if (result.newlyTriggered.length > 0) {
+        setTriggeredAlerts(prev => [...prev, ...result.newlyTriggered]);
+        // Request browser notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+        // Show browser notification for each triggered alert
+        result.newlyTriggered.forEach(alert => {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(`Alert: ${alert.asset}`, {
+              body: `Price is now ${alert.condition} ${alert.value}`,
+              icon: '/vite.svg',
+              tag: `alert-${alert.id}`,
+            });
+          }
+        });
+      }
+    }
   }, [livePrices]);
 
   const handleToggleForm = () => {
@@ -51,10 +73,13 @@ export default function AlertsScreen() {
   };
 
   const handleDelete = (alert) => {
-    const confirmed = window.confirm(`Delete the alert for ${alert.asset} (Price ${alert.condition} ${alert.value})?`);
-    if (!confirmed) return;
     const updated = deleteAlert(alert.id);
     setAlerts(updated);
+    setDeleteConfirmAlert(null);
+  };
+
+  const handleDeleteClick = (alert) => {
+    setDeleteConfirmAlert(alert);
   };
 
   return (
@@ -117,6 +142,31 @@ export default function AlertsScreen() {
         </div>
       )}
 
+      {/* Triggered alerts notification banner */}
+      {triggeredAlerts.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-400 mb-1">Alerts Triggered</p>
+              <div className="space-y-1">
+                {triggeredAlerts.map(alert => (
+                  <p key={alert.id} className="text-xs text-amber-300">
+                    <span className="font-bold">{alert.asset}</span> — Price is now {alert.condition} {alert.value}
+                  </p>
+                ))}
+              </div>
+              <button
+                onClick={() => setTriggeredAlerts([])}
+                className="text-[10px] text-amber-500 mt-2 hover:text-amber-400"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {alerts.length === 0 && !showForm && (
         <div className="text-center py-12">
           <Bell size={40} className="mx-auto text-slate-700 mb-3" />
@@ -135,7 +185,7 @@ export default function AlertsScreen() {
                 <Bell size={16} className={alert.status === 'triggered' ? 'text-amber-400' : 'text-emerald-400'} />
                 <span className="text-sm font-bold">{alert.asset}</span>
               </div>
-              <button onClick={() => handleDelete(alert)} className="text-slate-600 hover:text-red-400 transition-colors">
+              <button onClick={() => handleDeleteClick(alert)} className="text-slate-600 hover:text-red-400 transition-colors">
                 <Trash2 size={14} />
               </button>
             </div>
@@ -158,6 +208,43 @@ export default function AlertsScreen() {
           <Plus size={16} />
           Create New Alert
         </button>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirmAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirmAlert(null)}>
+          <div className="bg-slate-900 w-full sm:w-[400px] rounded-2xl border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-700 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={20} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-200">Delete Alert?</h3>
+                <p className="text-xs text-slate-500 mt-0.5">This action cannot be undone.</p>
+              </div>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-slate-300">
+                Are you sure you want to delete the alert for <span className="font-semibold text-slate-200">{deleteConfirmAlert.asset}</span>{' '}
+                (Price {deleteConfirmAlert.condition} {deleteConfirmAlert.value})?
+              </p>
+            </div>
+            <div className="flex gap-2 p-4 border-t border-slate-700">
+              <button
+                onClick={() => setDeleteConfirmAlert(null)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirmAlert)}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
