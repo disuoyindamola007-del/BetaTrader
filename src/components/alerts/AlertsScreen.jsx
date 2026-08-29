@@ -3,6 +3,7 @@ import { Bell, Plus, Trash2, X, AlertCircle } from 'lucide-react';
 import { useCryptoBatch, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { getCategory } from '../../services/marketDataService.js';
 import { getAlerts, createAlert, deleteAlert, checkAlerts } from '../../services/alertsService.js';
+import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
 
 export default function AlertsScreen() {
   const [alerts, setAlerts] = useState(() => getAlerts());
@@ -13,6 +14,16 @@ export default function AlertsScreen() {
   const [formError, setFormError] = useState('');
   const [deleteConfirmAlert, setDeleteConfirmAlert] = useState(null);
   const [triggeredAlerts, setTriggeredAlerts] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const { results: searchResults, isLoading: searchLoading } = useSymbolSearch(searchQuery);
+
+  const selectSearchResult = (result) => {
+    setFormAsset(result.symbol);
+    setSearchQuery(result.symbol);
+    setShowSearchResults(false);
+    setFormError('');
+  };
 
   // Split alert symbols by category so we can fetch live prices for
   // whichever assets currently have active alerts on them.
@@ -69,6 +80,8 @@ export default function AlertsScreen() {
     setFormValue('');
     setFormCondition('above');
     setFormError('');
+    setSearchQuery('');
+    setShowSearchResults(false);
     setShowForm(false);
   };
 
@@ -99,14 +112,55 @@ export default function AlertsScreen() {
           <p className="text-sm font-semibold text-slate-300">New Price Alert</p>
 
           <div>
-            <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Asset Symbol</label>
-            <input
-              type="text"
-              placeholder="EUR/USD, BTC, AAPL..."
-              value={formAsset}
-              onChange={e => setFormAsset(e.target.value)}
-              className="w-full input-field"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-slate-500 uppercase tracking-wider">Asset Symbol</label>
+              {formAsset && searchResults.length === 0 && (
+                <span className="text-[10px] text-slate-400 font-mono">Manual entry</span>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="EUR/USD, BTC, AAPL..."
+                value={searchQuery}
+                onChange={e => {
+                  const val = e.target.value;
+                  setSearchQuery(val);
+                  setFormAsset(val.trim().toUpperCase());
+                  setShowSearchResults(true);
+                  if (formError) setFormError('');
+                }}
+                onFocus={() => setShowSearchResults(true)}
+                onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+                className="w-full input-field pr-8"
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setFormAsset(''); setShowSearchResults(false); setFormError(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                  <X size={14} />
+                </button>
+              )}
+              {showSearchResults && searchQuery.trim() && (
+                <div className="absolute z-50 w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                  {searchLoading && <div className="p-3 text-xs text-slate-500 text-center">Searching...</div>}
+                  {!searchLoading && searchResults.length === 0 && (
+                    <div className="p-3 text-xs text-slate-500 text-center">No results — you can still create an alert manually.</div>
+                  )}
+                  {!searchLoading && searchResults.map(result => (
+                    <button
+                      key={`${result.source}:${result.symbol}`}
+                      onClick={() => selectSearchResult(result)}
+                      className="w-full text-left p-3 flex items-center justify-between hover:bg-slate-800 transition-colors border-b border-slate-800/50 last:border-0"
+                    >
+                      <div>
+                        <span className="text-sm font-semibold text-slate-200">{result.symbol}</span>
+                        <span className="text-xs text-slate-500 ml-2">{result.name}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-600 uppercase bg-slate-800 px-2 py-0.5 rounded">{result.category}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -127,7 +181,10 @@ export default function AlertsScreen() {
                 type="number"
                 placeholder="1.0900"
                 value={formValue}
-                onChange={e => setFormValue(e.target.value)}
+                onChange={e => {
+                  setFormValue(e.target.value);
+                  if (formError) setFormError('');
+                }}
                 className="w-full input-field"
               />
             </div>

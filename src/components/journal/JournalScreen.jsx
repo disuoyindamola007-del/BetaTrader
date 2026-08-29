@@ -430,29 +430,26 @@ export default function JournalScreen() {
     const exit = parseFloat(outcomeExitPrice);
     if (Number.isNaN(exit)) return;
 
-    const updated = setTrades(prevTrades => {
-      const trades = Array.isArray(prevTrades) ? prevTrades : getTrades();
-      const updatedTrades = trades.map(t => {
-        if (t.id === outcomeTrade.id) {
-          return {
-            ...t,
-            status: 'closed',
-            exit: String(exit),
-            result: outcomeResult,
-          };
-        }
-        return t;
-      });
-      saveTrades(updatedTrades);
-      return updatedTrades;
+    const trades = Array.isArray(trades) ? trades : getTrades();
+    const updatedTrades = trades.map(t => {
+      if (t.id === outcomeTrade.id) {
+        return {
+          ...t,
+          status: 'closed',
+          exit: String(exit),
+          result: outcomeResult,
+        };
+      }
+      return t;
     });
-    setTrades(updated);
+    saveTrades(updatedTrades);
+    setTrades(updatedTrades);
     setShowOutcomeModal(false);
     setOutcomeTrade(null);
     setOutcomeResult('');
     setOutcomeExitPrice('');
     // Refresh selectedTrade to show updated state
-    const refreshed = updated.find(t => t.id === outcomeTrade.id);
+    const refreshed = updatedTrades.find(t => t.id === outcomeTrade.id);
     if (refreshed) setSelectedTrade(refreshed);
   };
 
