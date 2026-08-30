@@ -232,17 +232,25 @@ async function fetchKrakenCandles(symbol, interval, limit = 200) {
   const url = `${KRAKEN_BASE}/OHLC?pair=${encodeURIComponent(krakenPair)}&interval=${krakenInterval}`;
 
   try {
-    const response = await fetchJsonWithTimeout(url, {}, { provider: 'kraken' });
+    // Use direct fetch with timeout (same as test endpoint that works)
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
     lastKrakenRequest = Date.now();
 
+    if (!response.ok) {
+      recordFailure('kraken');
+      throw new Error(`Kraken HTTP ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
     // Kraken returns: { error: [], result: { <pair>: [[time, open, high, low, close, vwap, volume, count], ...], last: <id> } }
-    if (!response || response.error) {
-      const errorMsg = Array.isArray(response?.error) ? response.error.join(', ') : 'Unknown Kraken error';
+    if (data.error && data.error.length > 0) {
+      const errorMsg = data.error.join(', ');
       recordFailure('kraken');
       throw new Error(`Kraken API error: ${errorMsg}`);
     }
 
-    const result = response.result;
+    const result = data.result;
     const pairKey = Object.keys(result).find(k => k !== 'last');
     if (!pairKey || !Array.isArray(result[pairKey])) {
       recordFailure('kraken');
@@ -264,7 +272,7 @@ async function fetchKrakenCandles(symbol, interval, limit = 200) {
       volume: parseFloat(candle[6]), // Volume is index 6 in Kraken's response
     }));
   } catch (error) {
-    if (error.timeout || error.circuitOpen) throw error;
+    if (error.name === 'AbortError' || error.circuitOpen) throw error;
 
     // Detect Kraken blocking/restriction errors
     if (error.message?.includes('451') ||
@@ -381,46 +389,15 @@ export default async function handler(req, res) {
 
       logCacheMiss({ provider: 'kraken', key: krakenCacheKey });
 
-      // Direct Kraken fetch for debugging (bypass circuit breaker and rate limiting)
-      if (req.query.debug === '1') {
-        const KRAKEN_BASE = 'https://api.kraken.com/0/public';
-        const krakenPair = KRAKEN_SYMBOL_MAP[symbol.toUpperCase().replace('/', '')];
-        const krakenInterval = KRAKEN_INTERVAL_MAP[interval];
-        const url = `${KRAKEN_BASE}/OHLC?pair=${encodeURIComponent(krakenPair)}&interval=${krakenInterval}`;
-        try {
-          const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-          const data = await response.json();
-          return res.status(200).json({
-            url,
-            status: response.status,
-            data: data,
-          });
-        } catch (e) {
-          return res.status(500).json({ error: e.message, name: e.name });
-        }
-      }
-
       try {
         const krakenCandles = await fetchKrakenCandles(symbol, interval, parseInt(limit) || 200);
-        console.log(`Kraken success for ${symbol}/${interval}: ${krakenCandles.length} candles, first time: ${krakenCandles[0]?.time}, last time: ${krakenCandles[krakenCandles.length-1]?.time}`);
         await set(krakenCacheKey, krakenCandles, ttlFor('candles', interval));
         logCacheHit({ provider: 'kraken', key: krakenCacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(krakenCandles).length });
         res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
         return res.status(200).json(krakenCandles);
       } catch (krakenError) {
         // Kraken failed (blocked, rate limited, etc.) — fall back to CoinGecko
-        console.error(`Kraken candle fetch FAILED for ${symbol}/${interval}:`, krakenError.message);
-        // Return error details for debugging (will be removed after testing)
-        if (req.query.debug === '1') {
-          return res.status(500).json({
-            error: 'Kraken failed',
-            details: krakenError.message,
-            name: krakenError.name,
-            timeout: krakenError.timeout,
-            krakenBlocked: krakenError.krakenBlocked,
-            circuitOpen: krakenError.circuitOpen,
-          });
-        }
+        console.warn(`Kraken candle fetch failed for ${symbol}/${interval}, falling back to CoinGecko:`, krakenError.message);
         // Continue to CoinGecko fallback below
       }
     }
