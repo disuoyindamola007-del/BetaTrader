@@ -42,6 +42,26 @@ export function AppProvider({ children }) {
     } catch { /* ignore */ }
   }, [activeTab]);
 
+  const [selectedNews, setSelectedNews] = useState(() => {
+    try {
+      const saved = localStorage.getItem('betatrader:selectedNews');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [selectedPulseMetric, setSelectedPulseMetric] = useState(() => {
+    try {
+      const saved = localStorage.getItem('betatrader:selectedPulseMetric');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [marketSearchRequest, setMarketSearchRequest] = useState(0);
+  const [backtestStep, setBacktestStep] = useState(0);
+  const [journalView, setJournalView] = useState(() => {
+    try {
+      return localStorage.getItem('betatrader:journalView') || 'dashboard';
+    } catch { return 'dashboard'; }
+  });
+
   // Persist selectedAsset to localStorage and URL params whenever it changes
   useEffect(() => {
     try {
@@ -88,25 +108,6 @@ export function AppProvider({ children }) {
       localStorage.setItem('betatrader:journalView', journalView);
     } catch { /* ignore */ }
   }, [journalView]);
-  const [selectedNews, setSelectedNews] = useState(() => {
-    try {
-      const saved = localStorage.getItem('betatrader:selectedNews');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
-  const [selectedPulseMetric, setSelectedPulseMetric] = useState(() => {
-    try {
-      const saved = localStorage.getItem('betatrader:selectedPulseMetric');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
-  const [marketSearchRequest, setMarketSearchRequest] = useState(0);
-  const [backtestStep, setBacktestStep] = useState(0);
-  const [journalView, setJournalView] = useState(() => {
-    try {
-      return localStorage.getItem('betatrader:journalView') || 'dashboard';
-    } catch { return 'dashboard'; }
-  });
   const [userName, setUserName] = useState('Trader');
 
   // Persisted settings — single source of truth (previously ProfileScreen

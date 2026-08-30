@@ -11,7 +11,7 @@ import AlertsScreen from './components/alerts/AlertsScreen.jsx';
 import ProfileScreen from './components/profile/ProfileScreen.jsx';
 
 function AppContent() {
-  const { activeTab, selectedAsset, selectedNews, selectedPulseMetric } = useApp();
+  const { activeTab, selectedAsset, selectedNews, selectedPulseMetric, darkMode } = useApp();
 
   const renderScreen = () => {
     if (activeTab === 'home') {
@@ -30,7 +30,7 @@ function AppContent() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950">
+    <div className={`flex flex-col h-screen ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`} data-theme={darkMode ? 'dark' : 'light'}>
       <main className="flex-1 overflow-y-auto scroll-hide pb-24">
         {renderScreen()}
       </main>
