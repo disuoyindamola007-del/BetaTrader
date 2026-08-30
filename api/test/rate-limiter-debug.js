@@ -7,25 +7,41 @@ export default async function handler(req, res) {
 
   try {
     // Check current credit usage
-    const { data, error } = await supabase
-      .from('twelvedata_credits')
+    const { data, error: tableError } = await supabase
+      .from('twelvedata_credit_buckets')
       .select('*')
       .eq('minute', minute)
       .single();
 
-    if (error) {
+    if (tableError) {
+      // Try testing the RPC function
+      const { data: rpcData, error: rpcError } = await supabase.rpc('reserve_twelvedata_credits', {
+        p_minute: minute,
+        p_cost: 1,
+        p_limit: 8,
+      });
+
       return res.status(200).json({
         minute,
-        error: error.message,
-        note: 'No row for current minute yet',
+        table_error: tableError.message,
+        table_exists: false,
+        rpc_test: rpcError ? { error: rpcError.message, exists: false } : { result: rpcData, exists: true },
       });
     }
 
+    // Test RPC function
+    const { data: rpcData, error: rpcError } = await supabase.rpc('reserve_twelvedata_credits', {
+      p_minute: minute,
+      p_cost: 1,
+      p_limit: 8,
+    });
+
     return res.status(200).json({
       minute,
-      used_count: data.used_count,
+      used_count: data.used,
       limit: 8,
-      remaining: 8 - data.used_count,
+      remaining: 8 - data.used,
+      rpc_test: rpcError ? { error: rpcError.message } : { result: rpcData },
     });
   } catch (error) {
     return res.status(200).json({
