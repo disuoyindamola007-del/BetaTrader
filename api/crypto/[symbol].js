@@ -4,6 +4,7 @@ import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitStat
 import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
 import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
 import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
+import { reserveProviderCredits, providerBudgetError } from '../../lib/providerRateLimiter.js';
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY || process.env.COINGECKO_DEMO_API_KEY || '';
@@ -86,16 +87,24 @@ function getId(symbol, providerId) {
 }
 
 async function fetchCoinGecko(url) {
+  // Per-instance rate limit check (first line of defense)
   if (isRateLimited('coingecko')) {
     const err = new Error('Rate limit cooldown active');
     err.rateLimited = true;
     throw err;
   }
 
+  // Per-instance circuit breaker (first line of defense)
   if (isCircuitOpen('coingecko')) {
     const err = new Error('CoinGecko circuit breaker open');
     err.circuitOpen = true;
     throw err;
+  }
+
+  // GLOBAL rate limit check (shared across all Vercel instances and users)
+  const creditResult = await reserveProviderCredits('coingecko', 1, 'crypto/quote');
+  if (!creditResult.allowed) {
+    throw providerBudgetError('coingecko', 1, creditResult.used);
   }
 
   const headers = { accept: 'application/json' };
@@ -106,7 +115,7 @@ async function fetchCoinGecko(url) {
     recordSuccess('coingecko');
     return data;
   } catch (error) {
-    if (error.timeout || error.circuitOpen) throw error;
+    if (error.timeout || error.circuitOpen || error.creditBudget) throw error;
     if (error.message?.includes('429')) {
       triggerRateLimitCooldown('coingecko');
       const err = new Error('CoinGecko rate limit reached');
@@ -212,7 +221,7 @@ async function fetchKrakenCandles(symbol, interval, limit = 200) {
     throw new Error(`Unsupported interval for Kraken: ${interval}`);
   }
 
-  // Check circuit breaker for Kraken
+  // Check circuit breaker for Kraken (per-instance first line of defense)
   if (isCircuitOpen('kraken')) {
     const err = new Error('Kraken circuit breaker open — falling back to CoinGecko');
     err.circuitOpen = true;
@@ -220,7 +229,14 @@ async function fetchKrakenCandles(symbol, interval, limit = 200) {
     throw err;
   }
 
-  // Respect Kraken's ~1 req/sec rate limit
+  // GLOBAL rate limit check (shared across all Vercel instances and users)
+  // Kraken allows ~1 request per second per IP
+  const creditResult = await reserveProviderCredits('kraken', 1, `crypto/candles/${interval}`);
+  if (!creditResult.allowed) {
+    throw providerBudgetError('kraken', 1, creditResult.used);
+  }
+
+  // Per-instance rate limiting as additional safety (in case Supabase tracker is down)
   const now = Date.now();
   const timeSinceLastRequest = now - lastKrakenRequest;
   if (timeSinceLastRequest < KRAKEN_RATE_LIMIT_MS) {
@@ -272,7 +288,7 @@ async function fetchKrakenCandles(symbol, interval, limit = 200) {
       volume: parseFloat(candle[6]), // Volume is index 6 in Kraken's response
     }));
   } catch (error) {
-    if (error.name === 'AbortError' || error.circuitOpen) throw error;
+    if (error.name === 'AbortError' || error.circuitOpen || error.creditBudget) throw error;
 
     // Detect Kraken blocking/restriction errors
     if (error.message?.includes('451') ||

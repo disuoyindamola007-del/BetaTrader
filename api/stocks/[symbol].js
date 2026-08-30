@@ -6,6 +6,7 @@ import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBr
 import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
 import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
 import { reserveTwelveDataCredits, twelveDataBudgetError } from '../../lib/twelveDataCredits.js';
+import { reserveProviderCredits, providerBudgetError } from '../../lib/providerRateLimiter.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
@@ -24,16 +25,25 @@ const twelveDataIntervalMap = {
   '1m': '1min', '5m': '5min', '15m': '15min', '1h': '1h', '4h': '4h', '1d': '1day', '1w': '1week'
 };
 
-async function fetchFinnhub(url) {
+async function fetchFinnhub(url, context = 'stocks/quote') {
+  // Per-instance rate limit check (first line of defense)
   if (isRateLimited('finnhub')) {
     const err = new Error('Rate limit cooldown active');
     err.rateLimited = true;
     throw err;
   }
+  // Per-instance circuit breaker (first line of defense)
   if (isCircuitOpen('finnhub')) {
     const err = new Error('Finnhub circuit breaker open');
     err.circuitOpen = true;
     throw err;
+  }
+
+  // GLOBAL rate limit check (shared across all Vercel instances and users)
+  // Finnhub allows ~30 calls/minute on free tier
+  const creditResult = await reserveProviderCredits('finnhub', 1, context);
+  if (!creditResult.allowed) {
+    throw providerBudgetError('finnhub', 1, creditResult.used);
   }
 
   try {
@@ -43,11 +53,7 @@ async function fetchFinnhub(url) {
     recordSuccess('finnhub');
     return data;
   } catch (error) {
-    if (error.timeout) {
-      recordFailure('finnhub');
-      throw new Error('Finnhub request timed out');
-    }
-    if (error.circuitOpen) throw error;
+    if (error.timeout || error.circuitOpen || error.creditBudget) throw error;
     if (error.message?.includes('429')) {
       triggerRateLimitCooldown('finnhub');
       const err = new Error('Finnhub rate limit reached');
@@ -177,10 +183,18 @@ async function fetchAlphaVantageQuote(symbol, apiKey) {
   }
   logCacheMiss({ provider: 'alphavantage', key: cacheKey });
 
+  // Per-instance circuit breaker (first line of defense)
   if (isCircuitOpen('alphavantage')) {
     const err = new Error('Alpha Vantage circuit breaker open');
     err.circuitOpen = true;
     throw err;
+  }
+
+  // GLOBAL rate limit check (shared across all Vercel instances and users)
+  // AlphaVantage allows ~5 calls/minute on free tier
+  const creditResult = await reserveProviderCredits('alphavantage', 1, 'stocks/quote');
+  if (!creditResult.allowed) {
+    throw providerBudgetError('alphavantage', 1, creditResult.used);
   }
 
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
@@ -188,11 +202,10 @@ async function fetchAlphaVantageQuote(symbol, apiKey) {
   try {
     data = await fetchJsonWithTimeout(url, {}, { provider: 'alphavantage' });
   } catch (error) {
-    if (error.timeout) {
-      recordFailure('alphavantage');
-      throw new Error('Alpha Vantage quote request timed out');
-    }
-    throw error;
+    if (error.timeout || error.creditBudget) throw error;
+    if (error.circuitOpen) throw error;
+    recordFailure('alphavantage');
+    throw new Error('Alpha Vantage quote request timed out');
   }
   recordSuccess('alphavantage');
   await set(cacheKey, data, ttlFor('quote'));
@@ -216,16 +229,22 @@ async function fetchAlphaVantageCandles(symbol, interval, apiKey) {
     throw err;
   }
 
+  // GLOBAL rate limit check (shared across all Vercel instances and users)
+  // AlphaVantage allows ~5 calls/minute on free tier
+  const creditResult = await reserveProviderCredits('alphavantage', 1, `stocks/candles/${interval}`);
+  if (!creditResult.allowed) {
+    throw providerBudgetError('alphavantage', 1, creditResult.used);
+  }
+
   const url = `https://www.alphavantage.co/query?function=${avInterval}${avIntervalParam}&symbol=${symbol}&apikey=${apiKey}&outputsize=full`;
   let data;
   try {
     data = await fetchJsonWithTimeout(url, {}, { provider: 'alphavantage' });
   } catch (error) {
-    if (error.timeout) {
-      recordFailure('alphavantage');
-      throw new Error('Alpha Vantage candles request timed out');
-    }
-    throw error;
+    if (error.timeout || error.creditBudget) throw error;
+    if (error.circuitOpen) throw error;
+    recordFailure('alphavantage');
+    throw new Error('Alpha Vantage candles request timed out');
   }
   recordSuccess('alphavantage');
   await set(cacheKey, data, ttlFor('candles', interval));
