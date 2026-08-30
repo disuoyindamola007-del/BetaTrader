@@ -10,7 +10,6 @@ import { useNews } from '../../hooks/useNews.js';
 import { useMarketOverview } from '../../hooks/useMarketOverview.js';
 import { useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { getCategory } from '../../services/marketDataService.js';
-import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
 import { SkeletonCard, SkeletonMetric, SkeletonNews, SkeletonText } from '../shared/Skeleton.jsx';
 
@@ -237,7 +236,7 @@ export default function HomeScreen() {
               <div className="flex items-center gap-3">
                 <div>
                   <p className="text-sm font-bold">{asset.symbol}</p>
-                  <AIBadge bias={asset.bias} confidence={asset.confidence} />
+                  <p className="text-[10px] text-slate-500">{asset.name}</p>
                 </div>
               </div>
               <div className="text-right">
@@ -256,12 +255,12 @@ export default function HomeScreen() {
         </div>
         <div className="flex gap-2 overflow-x-auto scroll-hide pb-1">
           {liveTrending.gainers?.map((item) => (
-            <button key={item.symbol} onClick={() => navigateToAsset(mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 })} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/8 border border-emerald-500/15 whitespace-nowrap hover:bg-emerald-500/12 transition-colors">
+            <button key={item.symbol} onClick={() => navigateToAsset(mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto' })} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/8 border border-emerald-500/15 whitespace-nowrap hover:bg-emerald-500/12 transition-colors">
               <span className="text-sm font-semibold">{item.symbol}</span><TrendingUp size={14} className="text-emerald-400" /><span className="text-sm font-bold font-mono text-emerald-400">+{item.changePct?.toFixed(2)}%</span>
             </button>
           ))}
           {liveTrending.losers?.map((item) => (
-            <button key={item.symbol} onClick={() => navigateToAsset(mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto', bias: 'neutral', confidence: 50 })} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/8 border border-red-500/15 whitespace-nowrap hover:bg-red-500/12 transition-colors">
+            <button key={item.symbol} onClick={() => navigateToAsset(mockAssets.find(a => a.symbol === item.symbol) || { symbol: item.symbol, name: item.symbol, category: 'crypto' })} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/8 border border-red-500/15 whitespace-nowrap hover:bg-red-500/12 transition-colors">
               <span className="text-sm font-semibold">{item.symbol}</span><TrendingDown size={14} className="text-red-400" /><span className="text-sm font-bold font-mono text-red-400">{item.changePct?.toFixed(2)}%</span>
             </button>
           ))}
