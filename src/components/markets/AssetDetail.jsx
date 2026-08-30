@@ -7,6 +7,15 @@ import { calcEMA, calcRSI, calcBollinger } from '../../services/marketDataServic
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
 
+// Map current timeframe to higher timeframe for institutional-grade analysis
+function getHigherTimeframe(tf) {
+  const map = {
+    '1m': '5m', '5m': '15m', '15m': '1h',
+    '1h': '4h', '4h': '1d', '1d': '1w', '1w': '1w'
+  };
+  return map[tf] || '4h';
+}
+
 export default function AssetDetail() {
   const { selectedAsset, goBack, setActiveTab, isFavorite, toggleFavorite } = useApp();
   const chartContainerRef = useRef(null);
@@ -23,6 +32,10 @@ export default function AssetDetail() {
   const { data: quote, error: quoteError, isLoading: quoteLoading, isStale, isUnavailable: quoteUnavailable, refetch: refetchQuote } = useQuote(symbol, !!symbol, selectedAsset?.providerSymbol, selectedAsset?.category);
   const { data: candles, error: candleError, isLoading: candleLoading, isUnavailable: candleUnavailable, refetch: refetchCandles } = useCandles(symbol, timeframe, { enabled: !!symbol, limit: 200, providerSymbol: selectedAsset?.providerSymbol, categoryHint: selectedAsset?.category });
 
+  // Higher timeframe candles for institutional-grade trend confirmation
+  const higherTimeframe = getHigherTimeframe(timeframe);
+  const { data: htCandles } = useCandles(symbol, higherTimeframe, { enabled: !!symbol, limit: 100, providerSymbol: selectedAsset?.providerSymbol, categoryHint: selectedAsset?.category });
+
   const handleRetry = useCallback(() => {
     refetchQuote();
     refetchCandles();
@@ -32,7 +45,7 @@ export default function AssetDetail() {
   const isUnavailable = quoteUnavailable || candleUnavailable;
   const chartError = quoteError || candleError;
 
-  // Indicators
+  // Indicators for both current and higher timeframe
   const [indicators, setIndicators] = useState({});
   useEffect(() => {
     if (!candles?.length) return;
@@ -43,13 +56,39 @@ export default function AssetDetail() {
       const rsi = calcRSI(candles);
       const bb = calcBollinger(candles);
       const last = candles.length - 1;
+
+      // Calculate 24h high/low and volume from recent candles
+      const recentCandles = candles.slice(-24); // Approximate 24h for hourly data
+      const high24h = Math.max(...recentCandles.map(c => c.high));
+      const low24h = Math.min(...recentCandles.map(c => c.low));
+      const volume24h = recentCandles.reduce((sum, c) => sum + c.volume, 0);
+
+      // Higher timeframe indicators
+      let htIndicators = {};
+      if (htCandles?.length >= 50) {
+        const htEma9 = calcEMA(htCandles, 9);
+        const htEma21 = calcEMA(htCandles, 21);
+        const htEma50 = calcEMA(htCandles, 50);
+        const htRsi = calcRSI(htCandles);
+        const htLast = htCandles.length - 1;
+        htIndicators = {
+          htEma9: htEma9[htLast],
+          htEma21: htEma21[htLast],
+          htEma50: htEma50[htLast],
+          htRsi: htRsi[htRsi.length - 1]?.toFixed(1) || '--',
+          htTimeframe: higherTimeframe,
+        };
+      }
+
       setIndicators({
         rsi: rsi[rsi.length - 1]?.toFixed(1) || '--',
         ema9: ema9[last], ema21: ema21[last], ema50: ema50[last],
         bbUpper: bb.upper[last], bbLower: bb.lower[last],
+        high24h, low24h, volume24h,
+        ...htIndicators,
       });
     } catch (err) { console.error('Indicator error:', err); }
-  }, [candles]);
+  }, [candles, htCandles, higherTimeframe]);
 
   // Render chart
   const renderChart = useCallback(async (candleData) => {
@@ -109,6 +148,36 @@ export default function AssetDetail() {
   const hasIndicators = indicators.rsi && indicators.rsi !== '--'
     && indicators.ema9 != null && indicators.ema21 != null && indicators.ema50 != null;
 
+  // Fetch relevant news for context (general news, filtered for symbol relevance)
+  const [newsContext, setNewsContext] = useState(null);
+  useEffect(() => {
+    if (!symbol) return;
+    const fetchNews = async () => {
+      try {
+        const res = await fetch(`/api/news`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.news?.length > 0) {
+            // Filter for symbol relevance (check headline and related symbols)
+            const symbolUpper = symbol.toUpperCase();
+            const relevant = data.news.filter(n =>
+              n.headline?.toUpperCase().includes(symbolUpper) ||
+              n.related?.some(r => r.toUpperCase() === symbolUpper)
+            ).slice(0, 2);
+
+            if (relevant.length > 0) {
+              const context = relevant.map(a => `${a.headline} (${a.source || 'news'})`).join('; ');
+              setNewsContext(context);
+            } else {
+              setNewsContext(''); // No relevant news
+            }
+          }
+        }
+      } catch (err) { /* News is optional for analysis */ }
+    };
+    fetchNews();
+  }, [symbol]);
+
   const handleAnalyze = useCallback(async () => {
     if (!symbol || !quote || !hasIndicators || isAnalyzing) return;
 
@@ -123,6 +192,17 @@ export default function AssetDetail() {
       ema9: String(indicators.ema9),
       ema21: String(indicators.ema21),
       ema50: String(indicators.ema50),
+      bbUpper: indicators.bbUpper ? String(indicators.bbUpper.toFixed(2)) : '',
+      bbLower: indicators.bbLower ? String(indicators.bbLower.toFixed(2)) : '',
+      volume24h: indicators.volume24h ? String(Math.round(indicators.volume24h)) : '',
+      high24h: indicators.high24h ? String(indicators.high24h.toFixed(2)) : '',
+      low24h: indicators.low24h ? String(indicators.low24h.toFixed(2)) : '',
+      htEma9: indicators.htEma9 ? String(indicators.htEma9.toFixed(2)) : '',
+      htEma21: indicators.htEma21 ? String(indicators.htEma21.toFixed(2)) : '',
+      htEma50: indicators.htEma50 ? String(indicators.htEma50.toFixed(2)) : '',
+      htRsi: indicators.htRsi ? String(indicators.htRsi) : '',
+      htTimeframe: indicators.htTimeframe || '',
+      news: newsContext ? encodeURIComponent(newsContext) : '',
     });
 
     try {
@@ -275,6 +355,19 @@ export default function AssetDetail() {
             <div className="glass-card p-3"><p className="text-[10px] text-slate-500 uppercase mb-1">BB Upper</p><p className="text-sm font-semibold font-mono">{formatPrice(indicators.bbUpper)}</p></div>
             <div className="glass-card p-3"><p className="text-[10px] text-slate-500 uppercase mb-1">BB Lower</p><p className="text-sm font-semibold font-mono">{formatPrice(indicators.bbLower)}</p></div>
           </div>
+          {/* Higher timeframe trend indicator */}
+          {indicators.htRsi && indicators.htEma9 != null && (
+            <div className="mt-3 glass-card p-3 border-l-4 border-l-emerald-500/30">
+              <p className="text-[10px] text-slate-500 uppercase mb-1">Higher Timeframe ({indicators.htTimeframe || '4h'})</p>
+              <div className="flex items-center gap-3 text-sm">
+                <span className="font-mono">RSI: <span className={indicators.htRsi > 50 ? 'text-emerald-400' : 'text-red-400'}>{indicators.htRsi}</span></span>
+                <span className="text-slate-500">|</span>
+                <span>EMA Stack: <span className={indicators.htEma9 > indicators.htEma21 ? 'text-emerald-400' : indicators.htEma9 < indicators.htEma21 ? 'text-red-400' : 'text-slate-400'}>
+                  {indicators.htEma9 > indicators.htEma21 && indicators.htEma21 > indicators.htEma50 ? 'Bullish' : indicators.htEma9 < indicators.htEma21 && indicators.htEma21 < indicators.htEma50 ? 'Bearish' : 'Mixed'}
+                </span></span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* AI Analysis */}
@@ -296,7 +389,16 @@ export default function AssetDetail() {
           )}
 
           {!isAnalyzing && !analyzeError && analysis && (
-            <p className="text-sm text-slate-300 leading-relaxed">{analysis}</p>
+            <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
+              {analysis.split('\n').map((line, i) => {
+                // Bold section headers like **Trend Read**
+                if (line.startsWith('**') && line.endsWith('**')) {
+                  return <p key={i} className="font-semibold text-emerald-400 mt-3 mb-1 text-xs uppercase tracking-wide">{line.replace(/\*\*/g, '')}</p>;
+                }
+                // Regular content lines
+                return <p key={i} className="mb-2">{line}</p>;
+              })}
+            </div>
           )}
 
           {!isAnalyzing && !analyzeError && !analysis && (
