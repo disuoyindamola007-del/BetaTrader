@@ -9,7 +9,7 @@ const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY || process.env.COINGECKO_DEMO_API_KEY || '';
 
 // Binance public API for crypto candle data (no API key required)
-// NOTE: Binance may block Vercel serverless requests from certain jurisdictions
+// NOTE: Binance is confirmed BLOCKED on Vercel (HTTP 451) — kept as fallback code only
 const BINANCE_BASE = 'https://api.binance.com/api/v3';
 
 // Binance uses USDT pairs for most symbols
@@ -32,6 +32,37 @@ const BINANCE_INTERVAL_MAP = {
   '5m': '5m',
   '15m': '15m',
 };
+
+// ==================== KRAKEN PUBLIC API ====================
+// Kraken's OHLC endpoint provides real minute-level candles for crypto.
+// No API key required. Rate limited at ~1 req/sec by IP.
+// Unlike Binance, no known Vercel blocking reports.
+const KRAKEN_BASE = 'https://api.kraken.com/0/public';
+
+// Kraken uses XBT for Bitcoin, XDG for Dogecoin
+const KRAKEN_SYMBOL_MAP = {
+  BTC: 'XXBTZUSD',  // Kraken's pair identifier for BTC/USD
+  ETH: 'XETHZUSD',  // ETH/USD
+  SOL: 'SOLUSD',    // SOL/USD
+  XRP: 'XXRPZUSD',  // XRP/USD
+  ADA: 'ADAUSD',    // ADA/USD
+  DOT: 'DOTUSD',    // DOT/USD
+  LINK: 'LINKUSD',  // LINK/USD
+  DOGE: 'XDGEUSD',  // Dogecoin (XDG on Kraken)
+  AVAX: 'AVAXUSD',  // AVAX/USD
+  // BNB not supported on Kraken
+};
+
+// Kraken interval mapping (in minutes)
+const KRAKEN_INTERVAL_MAP = {
+  '1m': 1,
+  '5m': 5,
+  '15m': 15,
+};
+
+// Kraken rate limit: ~1 request per second
+const KRAKEN_RATE_LIMIT_MS = 1100; // 1.1s to be safe
+let lastKrakenRequest = 0;
 
 const SYMBOL_TO_ID = {
   BTC: 'bitcoin',
@@ -166,6 +197,99 @@ async function fetchBinanceCandles(symbol, interval, limit = 200) {
   }
 }
 
+// ==================== KRAKEN CANDLE FETCHING ====================
+// Used for 1m, 5m, 15m intervals where CoinGecko doesn't provide real minute data.
+// Falls back to CoinGecko if Kraken fails.
+
+async function fetchKrakenCandles(symbol, interval, limit = 200) {
+  const krakenPair = KRAKEN_SYMBOL_MAP[symbol.toUpperCase().replace('/', '')];
+  if (!krakenPair) {
+    throw new Error(`Unsupported symbol for Kraken: ${symbol}. Supported: ${Object.keys(KRAKEN_SYMBOL_MAP).join(', ')}`);
+  }
+
+  const krakenInterval = KRAKEN_INTERVAL_MAP[interval];
+  if (!krakenInterval) {
+    throw new Error(`Unsupported interval for Kraken: ${interval}`);
+  }
+
+  // Check circuit breaker for Kraken
+  if (isCircuitOpen('kraken')) {
+    const err = new Error('Kraken circuit breaker open — falling back to CoinGecko');
+    err.circuitOpen = true;
+    err.krakenBlocked = true;
+    throw err;
+  }
+
+  // Respect Kraken's ~1 req/sec rate limit
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastKrakenRequest;
+  if (timeSinceLastRequest < KRAKEN_RATE_LIMIT_MS) {
+    const delay = KRAKEN_RATE_LIMIT_MS - timeSinceLastRequest;
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  lastKrakenRequest = Date.now();
+
+  const url = `${KRAKEN_BASE}/OHLC?pair=${encodeURIComponent(krakenPair)}&interval=${krakenInterval}`;
+
+  try {
+    const response = await fetchJsonWithTimeout(url, {}, { provider: 'kraken' });
+    lastKrakenRequest = Date.now();
+
+    // Kraken returns: { error: [], result: { <pair>: [[time, open, high, low, close, vwap, volume, count], ...], last: <id> } }
+    if (!response || response.error) {
+      const errorMsg = Array.isArray(response?.error) ? response.error.join(', ') : 'Unknown Kraken error';
+      recordFailure('kraken');
+      throw new Error(`Kraken API error: ${errorMsg}`);
+    }
+
+    const result = response.result;
+    const pairKey = Object.keys(result).find(k => k !== 'last');
+    if (!pairKey || !Array.isArray(result[pairKey])) {
+      recordFailure('kraken');
+      throw new Error('Unexpected Kraken response structure');
+    }
+
+    const candles = result[pairKey];
+
+    // Limit to requested count
+    const limited = limit ? candles.slice(-limit) : candles;
+
+    recordSuccess('kraken');
+    return limited.map(candle => ({
+      time: Math.floor(candle[0] / 1000),
+      open: parseFloat(candle[1]),
+      high: parseFloat(candle[2]),
+      low: parseFloat(candle[3]),
+      close: parseFloat(candle[4]),
+      volume: parseFloat(candle[6]), // Volume is index 6 in Kraken's response
+    }));
+  } catch (error) {
+    if (error.timeout || error.circuitOpen) throw error;
+
+    // Detect Kraken blocking/restriction errors
+    if (error.message?.includes('451') ||
+        error.message?.includes('restricted') ||
+        error.message?.includes('Service Unavailable') ||
+        error.krakenBlocked) {
+      recordFailure('kraken');
+      triggerRateLimitCooldown('kraken');
+      const err = new Error('Kraken API unavailable from this region');
+      err.krakenBlocked = true;
+      throw err;
+    }
+
+    if (error.message?.includes('429') || error.message?.includes('rate limit')) {
+      triggerRateLimitCooldown('kraken');
+      const err = new Error('Kraken rate limit reached');
+      err.rateLimited = true;
+      throw err;
+    }
+
+    recordFailure('kraken');
+    throw error;
+  }
+}
+
 function normalizeStats(id, coin) {
   const price = coin.usd;
   const changePct = coin.usd_24h_change ?? 0;
@@ -242,30 +366,30 @@ export default async function handler(req, res) {
     const id = getId(symbol, providerId);
     if (!id) return res.status(400).json({ error: `Unknown crypto symbol: ${symbol}` });
 
-    // For 1m, 5m, 15m intervals, try Binance first for real minute-level data
+    // For 1m, 5m, 15m intervals, try Kraken first for real minute-level data
     const isShortInterval = interval === '1m' || interval === '5m' || interval === '15m';
 
     if (isShortInterval) {
-      const binanceCacheKey = `binance:${symbol.toUpperCase().replace('/', '')}:${interval}:${limit}`;
-      const binanceCached = await get(binanceCacheKey, ttlFor('candles', interval));
+      const krakenCacheKey = `kraken:${symbol.toUpperCase().replace('/', '')}:${interval}:${limit}`;
+      const krakenCached = await get(krakenCacheKey, ttlFor('candles', interval));
 
-      if (binanceCached) {
-        logCacheHit({ provider: 'binance', key: binanceCacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(binanceCached).length });
+      if (krakenCached) {
+        logCacheHit({ provider: 'kraken', key: krakenCacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(krakenCached).length });
         res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-        return res.status(200).json(binanceCached);
+        return res.status(200).json(krakenCached);
       }
 
-      logCacheMiss({ provider: 'binance', key: binanceCacheKey });
+      logCacheMiss({ provider: 'kraken', key: krakenCacheKey });
 
       try {
-        const binanceCandles = await fetchBinanceCandles(symbol, interval, parseInt(limit) || 200);
-        await set(binanceCacheKey, binanceCandles, ttlFor('candles', interval));
-        logCacheHit({ provider: 'binance', key: binanceCacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(binanceCandles).length });
+        const krakenCandles = await fetchKrakenCandles(symbol, interval, parseInt(limit) || 200);
+        await set(krakenCacheKey, krakenCandles, ttlFor('candles', interval));
+        logCacheHit({ provider: 'kraken', key: krakenCacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(krakenCandles).length });
         res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-        return res.status(200).json(binanceCandles);
-      } catch (binanceError) {
-        // Binance failed (blocked, rate limited, etc.) — fall back to CoinGecko
-        console.warn(`Binance candle fetch failed for ${symbol}/${interval}, falling back to CoinGecko:`, binanceError.message);
+        return res.status(200).json(krakenCandles);
+      } catch (krakenError) {
+        // Kraken failed (blocked, rate limited, etc.) — fall back to CoinGecko
+        console.warn(`Kraken candle fetch failed for ${symbol}/${interval}, falling back to CoinGecko:`, krakenError.message);
         // Continue to CoinGecko fallback below
       }
     }
