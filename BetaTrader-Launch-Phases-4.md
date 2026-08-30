@@ -174,6 +174,40 @@ The prior AI analysis sent only RSI(14) and EMA 9/21/50 from a single timeframe,
 
 ---
 
+## Phase 6.6 — Market hours awareness (weekend credit savings)
+
+**Problem:** The app was polling every 60 seconds for forex, stocks, and commodities even when those markets were closed (weekends, holidays), wasting TwelveData credits on data that couldn't possibly change.
+
+**Completed:**
+- [x] Added `isMarketOpen(category)` function with proper market hours logic:
+  - **Crypto**: Always open (24/7) — completely unaffected
+  - **Stocks (US)**: Monday-Friday 9:30am-4:00pm ET, closed weekends & major US holidays
+  - **Forex/Commodities**: Sunday 5pm ET to Friday 5pm ET (24h during weekdays)
+- [x] Added `getTimeUntilMarketOpen(category)` for cache TTL extension during closures
+- [x] Modified `getRefreshInterval()` to return `Infinity` when market is closed, preventing all auto-polling
+- [x] Added `getQuoteTTL()` that extends cache TTL when market is closed (until market reopens, capped at 48 hours)
+- [x] Updated `useQuote`, `useCandles`, and `useBatchQuotes` hooks to skip polling when markets are closed
+- [x] Added market status indicator in AssetDetail UI showing "Market Open" (green pulsing dot) or "Market Closed — Data will update when market reopens" (amber dot)
+- [x] US market holiday detection for major holidays (New Year's, MLK, Presidents', Memorial, Juneteenth, July 4th, Labor, Thanksgiving, Christmas)
+
+**Market hours determination method:** Fixed schedule check based on US Eastern Time with DST handling. Uses `Date` object timezone conversion to reliably determine ET regardless of user's local timezone.
+
+**Credit savings estimate:**
+- Weekend duration: ~65 hours (Friday 5pm ET to Sunday 5pm ET for forex/commodities; ~62.5 hours for stocks)
+- Normal polling: 1 request/minute = ~3,900 requests per weekend per active user
+- With market hours awareness: 0 polling requests during closed hours
+- **Estimated savings: ~95-100% of weekend credit usage** for forex, stocks, and commodities
+- Only explicit user-initiated fetches consume credits during closures, and those are cached aggressively until market reopens
+
+**Files modified:**
+- `src/services/marketDataService.js` — added market hours functions, updated cache TTL logic
+- `src/hooks/useMarketData.js` — skip polling when markets closed
+- `src/components/markets/AssetDetail.jsx` — added market status indicator
+
+**Exit check:** [x] Phase 6.6 complete — commit `e225f7c` pushed to `main`, `npm run build` passes, polling correctly skips closed markets, crypto unaffected, market status visible in UI.
+
+---
+
 ## Phase 7 — Code cleanup
 
 - Remove or archive the three untracked `_backup-before-*` folders (`_backup-before-phase4`, `_backup-before-phase4-20260721-223446`, `_backup-before-kimi-merge`) once confirmed unnecessary
