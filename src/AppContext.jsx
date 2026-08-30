@@ -59,11 +59,54 @@ export function AppProvider({ children }) {
       }
     } catch { /* ignore */ }
   }, [selectedAsset]);
-  const [selectedNews, setSelectedNews] = useState(null);
-  const [selectedPulseMetric, setSelectedPulseMetric] = useState(null);
+
+  // Persist selectedNews whenever it changes
+  useEffect(() => {
+    try {
+      if (selectedNews) {
+        localStorage.setItem('betatrader:selectedNews', JSON.stringify(selectedNews));
+      } else {
+        localStorage.removeItem('betatrader:selectedNews');
+      }
+    } catch { /* ignore */ }
+  }, [selectedNews]);
+
+  // Persist selectedPulseMetric whenever it changes
+  useEffect(() => {
+    try {
+      if (selectedPulseMetric) {
+        localStorage.setItem('betatrader:selectedPulseMetric', JSON.stringify(selectedPulseMetric));
+      } else {
+        localStorage.removeItem('betatrader:selectedPulseMetric');
+      }
+    } catch { /* ignore */ }
+  }, [selectedPulseMetric]);
+
+  // Persist journalView whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('betatrader:journalView', journalView);
+    } catch { /* ignore */ }
+  }, [journalView]);
+  const [selectedNews, setSelectedNews] = useState(() => {
+    try {
+      const saved = localStorage.getItem('betatrader:selectedNews');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [selectedPulseMetric, setSelectedPulseMetric] = useState(() => {
+    try {
+      const saved = localStorage.getItem('betatrader:selectedPulseMetric');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [marketSearchRequest, setMarketSearchRequest] = useState(0);
   const [backtestStep, setBacktestStep] = useState(0);
-  const [journalView, setJournalView] = useState('dashboard');
+  const [journalView, setJournalView] = useState(() => {
+    try {
+      return localStorage.getItem('betatrader:journalView') || 'dashboard';
+    } catch { return 'dashboard'; }
+  });
   const [userName, setUserName] = useState('Trader');
 
   // Persisted settings — single source of truth (previously ProfileScreen
@@ -90,6 +133,11 @@ export function AppProvider({ children }) {
     setSelectedAsset(null);
     setSelectedNews(null);
     setSelectedPulseMetric(null);
+    // Clear from localStorage too
+    try {
+      localStorage.removeItem('betatrader:selectedNews');
+      localStorage.removeItem('betatrader:selectedPulseMetric');
+    } catch { /* ignore */ }
   };
 
   const clearNewsSelection = () => setSelectedNews(null);

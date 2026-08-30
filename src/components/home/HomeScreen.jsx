@@ -12,13 +12,15 @@ import { useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarke
 import { getCategory } from '../../services/marketDataService.js';
 import AIBadge from '../shared/AIBadge.jsx';
 import PriceChange from '../shared/PriceChange.jsx';
+import { SkeletonCard, SkeletonMetric, SkeletonNews, SkeletonText } from '../shared/Skeleton.jsx';
 
 export default function HomeScreen() {
   const { navigateToAsset, navigateToNews, navigateToPulseMetric, setActiveTab, openMarketSearch, userName } = useApp();
-  const { news: liveNews, isLoading: newsLoading, error: newsError } = useNews();
+  const { news: liveNews, isLoading: newsLoading, error: newsError, errorType: newsErrorType } = useNews();
   const {
     pulse: livePulse, briefing: liveBriefing, briefingGeneratedAt,
     pulseLoading, briefingLoading, pulseError, briefingError,
+    pulseErrorType, briefingErrorType,
     reloadPulse, reloadBriefing,
   } = useMarketOverview();
   const [briefingExpanded, setBriefingExpanded] = useState(false);
@@ -150,7 +152,12 @@ export default function HomeScreen() {
           </div>
           {briefingGeneratedAt && <span className="text-[9px] text-slate-500">Live • {new Date(briefingGeneratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
         </div>
-        {briefingLoading && <div className="py-8 flex justify-center"><RefreshCw size={20} className="text-emerald-400 animate-spin" /></div>}
+        {briefingLoading && (
+          <div className="space-y-3">
+            <SkeletonText lines={2} />
+            <div className="grid grid-cols-2 gap-4"><SkeletonMetric /><SkeletonMetric /></div>
+          </div>
+        )}
         {!briefingLoading && liveBriefing && <>
           <div className="flex items-center gap-3 mb-3">
             <span className="text-sm font-semibold text-slate-100">{liveBriefing.sentiment}</span>
@@ -169,12 +176,25 @@ export default function HomeScreen() {
             {briefingExpanded ? 'Show Less' : 'Read Full Analysis'} <ArrowRight size={14} className={briefingExpanded ? '-rotate-90' : 'rotate-90'} />
           </button>
         </>}
-        {!briefingLoading && !liveBriefing && <div className="py-4 text-center"><p className="text-sm text-amber-400 mb-3">{briefingError || 'Daily AI Briefing is temporarily unavailable.'}</p><button onClick={reloadBriefing} className="text-xs text-emerald-400">Try Again</button></div>}
+        {!briefingLoading && !liveBriefing && (
+          <div className="py-4 text-center">
+            <p className="text-sm text-amber-400 mb-3">
+              {briefingErrorType === 'rate_limited' ? '⚠️ Rate limited — please retry shortly.' : briefingError || 'Daily AI Briefing is temporarily unavailable.'}
+            </p>
+            <button onClick={reloadBriefing} className="text-xs text-emerald-400">Try Again</button>
+          </div>
+        )}
       </div>
 
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3"><span className="section-title">Market Pulse</span>{livePulse.length > 0 && <span className="text-[10px] text-emerald-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Live</span>}</div>
-        {pulseLoading && <div className="glass-card p-5 flex justify-center"><RefreshCw size={18} className="text-emerald-400 animate-spin" /></div>}
+        {pulseLoading && (
+          <div className="grid grid-cols-3 gap-2">
+            <SkeletonMetric />
+            <SkeletonMetric />
+            <SkeletonMetric />
+          </div>
+        )}
         {!pulseLoading && livePulse.length > 0 && <div className="grid grid-cols-3 gap-2">
           {livePulse.map((item) => (
             <button key={item.label} onClick={() => navigateToPulseMetric(item)} className="glass-card p-3 text-center hover:border-emerald-500/30 active:scale-[0.98] transition-all" aria-label={`Open ${item.label} details`}>
@@ -185,7 +205,14 @@ export default function HomeScreen() {
             </button>
           ))}
         </div>}
-        {!pulseLoading && livePulse.length === 0 && <div className="glass-card p-4 text-center"><p className="text-sm text-amber-400 mb-2">{pulseError || 'Live Market Pulse is temporarily unavailable.'}</p><button onClick={reloadPulse} className="text-xs text-emerald-400">Try Again</button></div>}
+        {!pulseLoading && livePulse.length === 0 && (
+          <div className="glass-card p-4 text-center">
+            <p className="text-sm text-amber-400 mb-2">
+              {pulseErrorType === 'rate_limited' ? '⚠️ Rate limited — please retry shortly.' : pulseError || 'Live Market Pulse is temporarily unavailable.'}
+            </p>
+            <button onClick={reloadPulse} className="text-xs text-emerald-400">Try Again</button>
+          </div>
+        )}
       </div>
 
       <div className="mb-5">
@@ -244,8 +271,13 @@ export default function HomeScreen() {
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3"><span className="section-title">Latest News</span><button onClick={() => setActiveTab('news')} className="text-xs text-emerald-400 font-medium">View All <ChevronRight size={12} className="inline" /></button></div>
         <div className="flex flex-col gap-3">
-          {newsLoading && <div className="glass-card p-5 text-center"><RefreshCw size={18} className="mx-auto text-emerald-400 animate-spin" /></div>}
-          {!newsLoading && newsError && <div className="glass-card p-4 text-center text-sm text-amber-400">News is temporarily unavailable.</div>}
+          {newsLoading && <SkeletonNews count={3} />}
+          {!newsLoading && newsError && (
+            <div className="glass-card p-4 text-center">
+              <p className="text-sm text-amber-400 mb-2">{newsErrorType === 'rate_limited' ? '⚠️ Rate limited — please retry shortly.' : newsError}</p>
+              <button onClick={reload} className="text-xs text-emerald-400">Try Again</button>
+            </div>
+          )}
           {!newsLoading && !newsError && displayedNews.slice(0, 3).map((news) => (
             <button key={news.id} onClick={() => navigateToNews(news)} className="glass-card-hover p-4 text-left">
               <div className="flex items-center gap-2 mb-2"><span className="text-xs text-slate-500">{news.source}</span><span className="text-xs text-slate-600">&bull;</span><span className="text-xs text-slate-500">{news.datetime ? new Date(news.datetime * 1000).toLocaleDateString() : ''}</span></div>

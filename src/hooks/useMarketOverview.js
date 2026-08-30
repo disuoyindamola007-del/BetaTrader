@@ -64,7 +64,12 @@ async function requestOverview(type) {
   try {
     const response = await fetch(`/api/market-overview?type=${type}`, { signal: controller.signal });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || `${type} unavailable`);
+    if (!response.ok) {
+      const error = new Error(result.error || `${type} unavailable`);
+      error.status = response.status;
+      error.errorType = response.status === 429 ? 'rate_limited' : 'unavailable';
+      throw error;
+    }
     return result;
   } finally {
     clearTimeout(timeout);
@@ -80,6 +85,8 @@ export function useMarketOverview() {
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [pulseError, setPulseError] = useState(null);
   const [briefingError, setBriefingError] = useState(null);
+  const [pulseErrorType, setPulseErrorType] = useState(null);
+  const [briefingErrorType, setBriefingErrorType] = useState(null);
 
   const loadPulse = useCallback(async () => {
     // Check client-side cache first (10-minute TTL)
@@ -104,6 +111,7 @@ export function useMarketOverview() {
       setCachedPulse({ pulse: pulseData, pulseGeneratedAt: generatedAt });
     } catch (err) {
       setPulseError(err.name === 'AbortError' ? 'Live Market Pulse took too long to load.' : err.message);
+      setPulseErrorType(err.errorType || 'unavailable');
     } finally {
       setPulseLoading(false);
     }
@@ -136,6 +144,7 @@ export function useMarketOverview() {
       }
     } catch (err) {
       setBriefingError(err.name === 'AbortError' ? 'Daily AI Briefing took too long to load.' : err.message);
+      setBriefingErrorType(err.errorType || 'unavailable');
     } finally {
       setBriefingLoading(false);
     }
@@ -159,6 +168,8 @@ export function useMarketOverview() {
     briefingLoading,
     pulseError,
     briefingError,
+    pulseErrorType,
+    briefingErrorType,
     reloadPulse: loadPulse,
     reloadBriefing,
   };
