@@ -256,7 +256,7 @@ async function fetchKrakenCandles(symbol, interval, limit = 200) {
 
     recordSuccess('kraken');
     return limited.map(candle => ({
-      time: Math.floor(candle[0] / 1000),
+      time: Math.floor(candle[0]), // Kraken returns timestamps in seconds (not ms)
       open: parseFloat(candle[1]),
       high: parseFloat(candle[2]),
       low: parseFloat(candle[3]),
@@ -383,13 +383,21 @@ export default async function handler(req, res) {
 
       try {
         const krakenCandles = await fetchKrakenCandles(symbol, interval, parseInt(limit) || 200);
+        console.log(`Kraken success for ${symbol}/${interval}: ${krakenCandles.length} candles, first time: ${krakenCandles[0]?.time}, last time: ${krakenCandles[krakenCandles.length-1]?.time}`);
         await set(krakenCacheKey, krakenCandles, ttlFor('candles', interval));
         logCacheHit({ provider: 'kraken', key: krakenCacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(krakenCandles).length });
         res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
         return res.status(200).json(krakenCandles);
       } catch (krakenError) {
         // Kraken failed (blocked, rate limited, etc.) — fall back to CoinGecko
-        console.warn(`Kraken candle fetch failed for ${symbol}/${interval}, falling back to CoinGecko:`, krakenError.message);
+        console.error(`Kraken candle fetch FAILED for ${symbol}/${interval}:`, krakenError.message);
+        console.error(`Kraken error details:`, {
+          message: krakenError.message,
+          name: krakenError.name,
+          timeout: krakenError.timeout,
+          krakenBlocked: krakenError.krakenBlocked,
+          circuitOpen: krakenError.circuitOpen,
+        });
         // Continue to CoinGecko fallback below
       }
     }
