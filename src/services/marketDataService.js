@@ -93,6 +93,139 @@ function getRoute(category) {
   return `/api/${category}`;
 }
 
+// ==================== MARKET HOURS AWARENESS ====================
+// Prevents wasting API credits on markets that are closed (weekends, holidays).
+// Crypto trades 24/7 and is always exempt from these checks.
+
+// US Eastern Time helpers
+function getETDate() {
+  const now = new Date();
+  // Convert to ET (UTC-5 or UTC-4 during DST)
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const etOffset = -5 * 3600000; // Standard EST
+  return new Date(utc + etOffset);
+}
+
+function isWeekend(date) {
+  const day = date.getDay();
+  return day === 0 || day === 6; // Sunday = 0, Saturday = 6
+}
+
+function isUSMarketHoliday(date) {
+  // Simplified major US market holidays (fixed dates)
+  // Note: This doesn't handle moving holidays like Thanksgiving exactly
+  const month = date.getMonth(); // 0-indexed
+  const day = date.getDate();
+  const holidays = [
+    // New Year's Day (Jan 1)
+    { m: 0, d: 1 },
+    // MLK Day (3rd Monday of January) — approximate
+    { m: 0, d: 15, type: 'approx' },
+    // Presidents' Day (3rd Monday of February) — approximate
+    { m: 1, d: 15, type: 'approx' },
+    // Good Friday — not tracked (complex, varies yearly)
+    // Memorial Day (last Monday of May) — approximate
+    { m: 4, d: 25, type: 'approx' },
+    // Juneteenth (June 19)
+    { m: 5, d: 19 },
+    // Independence Day (July 4)
+    { m: 6, d: 4 },
+    // Labor Day (1st Monday of September) — approximate
+    { m: 8, d: 1, type: 'approx' },
+    // Thanksgiving (4th Thursday of November) — approximate
+    { m: 10, d: 24, type: 'approx' },
+    // Christmas (December 25)
+    { m: 11, d: 25 },
+  ];
+
+  return holidays.some(h => h.m === month && Math.abs(h.d - day) <= 1);
+}
+
+/**
+ * Check if a market category is currently open for trading.
+ * - Crypto: Always open (24/7)
+ * - Forex: Sunday 5pm ET to Friday 5pm ET (24h during weekdays)
+ * - Stocks (US): Monday-Friday 9:30am-4:00pm ET, closed weekends & holidays
+ * - Commodities: Similar to forex (Sunday 5pm ET to Friday 5pm ET)
+ */
+export function isMarketOpen(category) {
+  // Crypto never closes
+  if (category === 'crypto') return true;
+
+  const etNow = getETDate();
+  const day = etNow.getDay();
+  const hour = etNow.getHours();
+  const minute = etNow.getMinutes();
+  const timeInMinutes = hour * 60 + minute;
+
+  // Weekend check (Saturday = 6, Sunday = 0)
+  const isWeekendDay = day === 0 || day === 6;
+
+  // US market holidays
+  if (isUSMarketHoliday(etNow) && category !== 'forex' && category !== 'commodities') {
+    return false;
+  }
+
+  if (category === 'stocks') {
+    // US Stock market: Mon-Fri 9:30am-4:00pm ET
+    if (isWeekendDay) return false;
+    const marketOpen = 9 * 60 + 30; // 9:30am
+    const marketClose = 16 * 60;     // 4:00pm
+    return timeInMinutes >= marketOpen && timeInMinutes < marketClose;
+  }
+
+  if (category === 'forex' || category === 'commodities') {
+    // Forex/Commodities: Sunday 5pm ET to Friday 5pm ET
+    // Sunday = 0, so we need: (day === 0 && hour >= 17) || (day >= 1 && day <= 4) || (day === 5 && hour < 17)
+    if (day === 0) return hour >= 17; // Sunday: open after 5pm ET
+    if (day >= 1 && day <= 4) return true; // Mon-Thu: open 24h
+    if (day === 5) return hour < 17; // Friday: close at 5pm ET
+    return false;
+  }
+
+  // Default: assume open (safe fallback)
+  return true;
+}
+
+/**
+ * Get milliseconds until the market next opens.
+ * Used to set aggressive cache TTL during market closures.
+ */
+export function getTimeUntilMarketOpen(category) {
+  if (isMarketOpen(category)) return 0;
+
+  const etNow = getETDate();
+  const day = etNow.getDay();
+  const hour = etNow.getHours();
+  const minute = etNow.getMinutes();
+  const second = etNow.getSeconds();
+
+  // Calculate ms until a specific ET time on a specific day
+  function msUntil(dayOffset, targetHour, targetMinute) {
+    const target = new Date(etNow);
+    target.setDate(target.getDate() + dayOffset);
+    target.setHours(targetHour, targetMinute, 0, 0);
+    return target.getTime() - etNow.getTime();
+  }
+
+  if (category === 'stocks') {
+    // Next trading day 9:30am ET
+    if (day === 5) return msUntil(2, 9, 30); // Saturday → Monday
+    if (day === 6) return msUntil(1, 9, 30); // Sunday → Monday
+    // Weekday but after hours
+    return msUntil(1, 9, 30); // Tomorrow 9:30am
+  }
+
+  if (category === 'forex' || category === 'commodities') {
+    // Forex opens Sunday 5pm ET
+    if (day === 6) return msUntil(1, 17, 0); // Saturday → Sunday 5pm
+    if (day === 5) return msUntil(2, 17, 0); // Friday (after 5pm) → Sunday 5pm
+    return msUntil(7 - day + 0, 17, 0); // Next Sunday 5pm
+  }
+
+  return 3600000; // Default: 1 hour
+}
+
 // ==================== REFRESH INTERVALS ====================
 
 const REFRESH_INTERVALS = {
@@ -102,8 +235,36 @@ const REFRESH_INTERVALS = {
   commodities: 60_000,
 };
 
+/**
+ * Get the appropriate refresh interval for a category.
+ * Returns Infinity when the market is closed to prevent polling.
+ * Returns normal interval when market is open.
+ */
 export function getRefreshInterval(category) {
+  // Crypto always refreshes
+  if (category === 'crypto') return REFRESH_INTERVALS.crypto;
+
+  // Skip polling when market is closed
+  if (!isMarketOpen(category)) return Infinity;
+
   return REFRESH_INTERVALS[category] || 60_000;
+}
+
+/**
+ * Get cache TTL for quotes, extended when market is closed.
+ * Normal TTL: 5 minutes
+ * Closed market TTL: until market reopens (capped at 48 hours)
+ */
+export function getQuoteTTL(category) {
+  const normalTTL = 5 * 60_000; // 5 minutes
+
+  if (category === 'crypto' || isMarketOpen(category)) {
+    return normalTTL;
+  }
+
+  // Market is closed — cache until it reopens (max 48 hours)
+  const timeUntilOpen = getTimeUntilMarketOpen(category);
+  return Math.min(timeUntilOpen + 5 * 60_000, 48 * 60 * 60_000);
 }
 
 // ==================== FETCH CORE ====================
@@ -147,12 +308,14 @@ function getQuoteCacheKey(symbol, categoryHint = null) {
 
 async function setUnifiedQuoteCache(symbol, quoteData, categoryHint = null) {
   const key = getQuoteCacheKey(symbol, categoryHint);
-  await set(key, quoteData, ttlFor('quote'));
+  const ttl = getQuoteTTL(getCategory(symbol, categoryHint));
+  await set(key, quoteData, ttl);
 }
 
 async function getUnifiedQuoteCache(symbol, categoryHint = null) {
   const key = getQuoteCacheKey(symbol, categoryHint);
-  const cached = await get(key, ttlFor('quote'));
+  const ttl = getQuoteTTL(getCategory(symbol, categoryHint));
+  const cached = await get(key, ttl);
   if (cached) diagCacheHit();
   else diagCacheMiss();
   return cached;
@@ -161,7 +324,8 @@ async function getUnifiedQuoteCache(symbol, categoryHint = null) {
 // Peek at quote without triggering diagnostics — used by hooks for SWR check
 export async function peekQuote(symbol, providerSymbol = null, categoryHint = null) {
   const key = getQuoteCacheKey(providerSymbol || symbol, categoryHint);
-  const cached = await get(key, ttlFor('quote'));
+  const ttl = getQuoteTTL(getCategory(symbol, categoryHint));
+  const cached = await get(key, ttl);
   const isFresh = (await get(key, 0)) !== null;
   return { cached, isFresh };
 }

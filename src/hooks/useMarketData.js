@@ -9,6 +9,7 @@ import {
   isTabActive,
   onTabVisibility,
   getCategory,
+  isMarketOpen,
 } from '../services/marketDataService.js';
 
 // ==================== useQuote ====================
@@ -71,7 +72,13 @@ export function useQuote(symbol, enabled = true, providerSymbol = null, category
     load(false);
 
     const category = getCategory(symbol, categoryHint);
+
+    // Don't set up polling interval if market is closed
+    if (!isMarketOpen(category)) return () => {};
+
     const intervalMs = getRefreshInterval(category);
+    // Infinity means market is closed — don't poll
+    if (intervalMs === Infinity) return () => {};
 
     intervalRef.current = setInterval(() => {
       if (isTabActive()) load(true);
@@ -115,7 +122,15 @@ export function useCandles(symbol, interval, options = {}) {
     if (!symbol || !enabled) return;
     load(false);
 
-    const intervalMs = getRefreshInterval(getCategory(symbol, categoryHint));
+    const category = getCategory(symbol, categoryHint);
+
+    // Don't set up polling interval if market is closed
+    if (!isMarketOpen(category)) return () => {};
+
+    const intervalMs = getRefreshInterval(category);
+    // Infinity means market is closed — don't poll
+    if (intervalMs === Infinity) return () => {};
+
     intervalRef.current = setInterval(() => {
       if (isTabActive()) load(true);
     }, intervalMs);
@@ -162,6 +177,13 @@ export function useBatchQuotes(symbols, enabled = true) {
   useEffect(() => {
     if (!symbols?.length || !enabled) return;
     load(false);
+
+    // Check if any non-crypto categories have open markets
+    const categories = new Set(symbols.map(s => getCategory(s)));
+    const hasOpenMarkets = [...categories].some(cat => cat === 'crypto' || isMarketOpen(cat));
+
+    // Don't poll if all non-crypto markets are closed
+    if (!hasOpenMarkets) return () => {};
 
     intervalRef.current = setInterval(() => {
       if (isTabActive()) load(true);

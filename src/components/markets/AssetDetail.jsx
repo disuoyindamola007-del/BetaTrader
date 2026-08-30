@@ -3,7 +3,7 @@ import { useApp } from '../../AppContext.jsx';
 import { ArrowLeft, Heart, Share2, Bell, Sparkles, AlertTriangle, Clock, RefreshCw, Check } from 'lucide-react';
 import PriceChange from '../shared/PriceChange.jsx';
 import { useQuote, useCandles } from '../../hooks/useMarketData.js';
-import { calcEMA, calcRSI, calcBollinger } from '../../services/marketDataService.js';
+import { calcEMA, calcRSI, calcBollinger, getCategory, isMarketOpen } from '../../services/marketDataService.js';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
 
@@ -293,6 +293,18 @@ export default function AssetDetail() {
         <div className="mb-5">
           <p className="text-3xl font-extrabold font-mono mb-1">${formatPrice(quote?.price)}</p>
           {quote?.changePct !== undefined && <PriceChange value={quote?.change} pct={quote?.changePct} size="lg" />}
+          {/* Market status indicator */}
+          {symbol && (() => {
+            const category = getCategory(symbol, selectedAsset?.category);
+            const marketOpen = isMarketOpen(category);
+            if (category === 'crypto') return null; // Crypto is always open
+            return (
+              <div className={`flex items-center gap-1.5 mt-2 text-xs ${marketOpen ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span className={`w-2 h-2 rounded-full ${marketOpen ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                {marketOpen ? 'Market Open' : 'Market Closed — Data will update when market reopens'}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Timeframes */}
