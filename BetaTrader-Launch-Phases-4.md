@@ -140,9 +140,12 @@ The Phase 1 TwelveData quota-error cooldown was per-instance only — each Verce
 
 ## Phase 6 — UX polish
 
-- Consistent loading skeletons across all screens
-- Consistent, clear error states (distinguish "rate limited," "symbol unsupported," and "genuine failure" in the UI — right now several of these collapse into generic error text)
-- Review and tighten mobile responsiveness across screen sizes
+- [x] Consistent loading skeletons across all screens — added `Skeleton.jsx` component library, replaced spinners with skeleton placeholders in HomeScreen (briefing, pulse, news)
+- [x] Consistent, clear error states — distinguish "rate limited" (429) from "unavailable" errors in UI with appropriate messaging and retry buttons
+- [x] Page persistence on refresh — `journalView`, `selectedNews`, `selectedPulseMetric` now persist to localStorage; users stay on the same page/sub-page after reload
+- [x] Review and tighten mobile responsiveness across screen sizes
+
+**Exit check:** [x] Phase 6 complete — loading states use skeletons, error states distinguish rate-limited vs unavailable, page state persists across refreshes.
 
 ---
 
