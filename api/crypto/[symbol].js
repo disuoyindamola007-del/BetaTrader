@@ -369,16 +369,6 @@ export default async function handler(req, res) {
     // For 1m, 5m, 15m intervals, try Kraken first for real minute-level data
     const isShortInterval = interval === '1m' || interval === '5m' || interval === '15m';
 
-    // Debug: return interval info
-    if (req.query.debug === '1') {
-      return res.status(200).json({
-        interval,
-        isShortInterval,
-        symbol,
-        query: req.query,
-      });
-    }
-
     if (isShortInterval) {
       const krakenCacheKey = `kraken:${symbol.toUpperCase().replace('/', '')}:${interval}:${limit}`;
       const krakenCached = await get(krakenCacheKey, ttlFor('candles', interval));
@@ -390,6 +380,25 @@ export default async function handler(req, res) {
       }
 
       logCacheMiss({ provider: 'kraken', key: krakenCacheKey });
+
+      // Direct Kraken fetch for debugging (bypass circuit breaker and rate limiting)
+      if (req.query.debug === '1') {
+        const KRAKEN_BASE = 'https://api.kraken.com/0/public';
+        const krakenPair = KRAKEN_SYMBOL_MAP[symbol.toUpperCase().replace('/', '')];
+        const krakenInterval = KRAKEN_INTERVAL_MAP[interval];
+        const url = `${KRAKEN_BASE}/OHLC?pair=${encodeURIComponent(krakenPair)}&interval=${krakenInterval}`;
+        try {
+          const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+          const data = await response.json();
+          return res.status(200).json({
+            url,
+            status: response.status,
+            data: data,
+          });
+        } catch (e) {
+          return res.status(500).json({ error: e.message, name: e.name });
+        }
+      }
 
       try {
         const krakenCandles = await fetchKrakenCandles(symbol, interval, parseInt(limit) || 200);
