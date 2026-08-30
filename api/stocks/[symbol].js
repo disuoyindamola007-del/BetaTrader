@@ -5,6 +5,7 @@ import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitStat
 import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
 import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
 import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
+import { reserveTwelveDataCredits, twelveDataBudgetError } from '../../lib/twelveDataCredits.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
@@ -102,6 +103,8 @@ async function fetchTwelveDataQuote(symbolParam, apiKey) {
     throw err;
   }
 
+  const reservation = await reserveTwelveDataCredits(symbolParam.split(',').length, 'stocks-quote-fallback');
+  if (!reservation.allowed) throw twelveDataBudgetError(symbolParam.split(',').length, reservation.used);
   const url = `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${apiKey}`;
   let data;
   try {
@@ -135,6 +138,8 @@ async function fetchTwelveDataCandles(symbol, interval, outputsize, apiKey) {
     throw err;
   }
 
+  const reservation = await reserveTwelveDataCredits(1, 'stocks-candles-fallback');
+  if (!reservation.allowed) throw twelveDataBudgetError(1, reservation.used);
   const url = `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${apiKey}`;
   let data;
   try {

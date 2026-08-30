@@ -5,6 +5,7 @@ import { isRateLimited, triggerRateLimitCooldown } from '../../lib/rateLimitStat
 import { isCircuitOpen, recordSuccess, recordFailure } from '../../lib/circuitBreaker.js';
 import { fetchJsonWithTimeout } from '../../lib/fetchWithTimeout.js';
 import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
+import { reserveTwelveDataCredits, twelveDataBudgetError } from '../../lib/twelveDataCredits.js';
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
@@ -81,6 +82,8 @@ export default async function handler(req, res) {
       if (cached) {
         data = cached;
       } else {
+        const reservation = await reserveTwelveDataCredits(mappedSymbols.length, isBatch ? 'commodities-batch-quote' : 'commodities-quote');
+        if (!reservation.allowed) throw twelveDataBudgetError(mappedSymbols.length, reservation.used);
         const url = `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`;
         try {
           data = await fetchJsonWithTimeout(url, {}, { provider: 'twelvedata' });
@@ -127,6 +130,8 @@ export default async function handler(req, res) {
     if (cached) {
       data = cached;
     } else {
+      const reservation = await reserveTwelveDataCredits(1, 'commodities-candles');
+      if (!reservation.allowed) throw twelveDataBudgetError(1, reservation.used);
       const url = `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbolParam)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`;
       try {
         data = await fetchJsonWithTimeout(url, {}, { provider: 'twelvedata' });
