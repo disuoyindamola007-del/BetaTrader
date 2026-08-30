@@ -369,6 +369,16 @@ export default async function handler(req, res) {
     // For 1m, 5m, 15m intervals, try Kraken first for real minute-level data
     const isShortInterval = interval === '1m' || interval === '5m' || interval === '15m';
 
+    // Debug: return interval info
+    if (req.query.debug === '1') {
+      return res.status(200).json({
+        interval,
+        isShortInterval,
+        symbol,
+        query: req.query,
+      });
+    }
+
     if (isShortInterval) {
       const krakenCacheKey = `kraken:${symbol.toUpperCase().replace('/', '')}:${interval}:${limit}`;
       const krakenCached = await get(krakenCacheKey, ttlFor('candles', interval));
