@@ -398,15 +398,6 @@ export default async function handler(req, res) {
       } catch (krakenError) {
         // Kraken failed (blocked, rate limited, etc.) — fall back to CoinGecko
         console.warn(`Kraken candle fetch failed for ${symbol}/${interval}, falling back to CoinGecko:`, krakenError.message);
-        // Return error for debugging
-        if (req.query.debug === '1') {
-          return res.status(500).json({
-            error: 'Kraken failed',
-            details: krakenError.message,
-            name: krakenError.name,
-            stack: krakenError.stack?.split('\n').slice(0, 5),
-          });
-        }
         // Continue to CoinGecko fallback below
       }
     }
