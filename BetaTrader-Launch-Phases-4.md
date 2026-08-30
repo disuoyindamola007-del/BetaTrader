@@ -109,17 +109,17 @@ The audit correctly flagged that `alertsService.js` and `journalService.js` exis
 
 Now that user-facing functionality is verified real, harden the infrastructure underneath it:
 
-- Timeouts on all outbound provider fetches
-- Retry with exponential backoff + jitter where appropriate
-- Circuit breaker pattern for repeatedly failing providers
-- Structured logging (endpoint, duration, cache hit/miss, retry count, failure reason) — currently only ad hoc `console.error` calls
-- Confirm the per-provider rate-limit cooldown (already built) has no remaining gaps beyond the TwelveData quota-error issue fixed in Phase 1
+- [x] Timeouts on all outbound provider fetches
+- [x] Retry with exponential backoff + jitter where appropriate
+- [x] Circuit breaker pattern for repeatedly failing providers
+- [x] Structured logging (endpoint, duration, cache hit/miss, retry count, failure reason) via `lib/structuredLogger.js`
+- [x] Confirm the per-provider rate-limit cooldown (already built) has no remaining gaps beyond the TwelveData quota-error issue fixed in Phase 1
 
-**Exit check:** review actual Vercel logs under simulated load/failure to confirm graceful degradation, not just code inspection.
+**Exit check:** [x] Phase 5 complete — timeouts, retries, circuit breakers, and structured logging are all implemented and verified via Vercel logs.
 
 ---
 
-## Phase 5.5 — Shared credit tracker for TwelveData (in progress)
+## Phase 5.5 — Shared credit tracker for TwelveData
 
 The Phase 1 TwelveData quota-error cooldown was per-instance only — each Vercel serverless instance tracked its own rate limit independently, so concurrent instances could each observe the same remaining balance and collectively overspend the 8-credit/minute Basic plan limit.
 
@@ -130,13 +130,11 @@ The Phase 1 TwelveData quota-error cooldown was per-instance only — each Verce
 - [x] Added structured logging for every credit reservation decision (allowed/denied, cost, used count, limit) via `logRequest()`
 - [x] Fixed SQL naming collision: renamed function output column from `used` to `used_count` to resolve Postgres ambiguity error
 - [x] Confirmed tracker enforcement working — blocked requests now return `TwelveData credit budget exhausted (8/8 credits reserved this minute)` instead of raw TwelveData 429s
+- [x] Collision test: deliberately fired GOLD (1 credit) + 8-pair forex batch simultaneously — tracker correctly blocked the second request when both landed in the same minute
+- [x] Confirmed `used_count` populates correctly in rejection logs
+- [x] Confirmed structured logs show `credit_reservation` events with correct `usedAfter` values
 
-**Pending verification:**
-- [ ] Collision test: deliberately fire GOLD (1 credit) + 8-pair forex batch simultaneously to confirm the tracker blocks the second request when both land in the same minute
-- [ ] Review Vercel logs to confirm `used_count` populates correctly in rejection logs (was showing `undefined` before the `used_count` fix)
-- [ ] Confirm structured logs show `credit_reservation` events with correct `usedAfter` values
-
-**Exit check:** collision test confirms the shared tracker (not just per-route caching) is what prevents overspending, with clear log evidence of blocking decisions.
+**Exit check:** [x] Phase 5.5 complete — the shared tracker (not just per-route caching) is confirmed to prevent overspending, with clear log evidence of blocking decisions.
 
 ---
 
