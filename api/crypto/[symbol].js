@@ -266,14 +266,6 @@ export default async function handler(req, res) {
       } catch (binanceError) {
         // Binance failed (blocked, rate limited, etc.) — fall back to CoinGecko
         console.warn(`Binance candle fetch failed for ${symbol}/${interval}, falling back to CoinGecko:`, binanceError.message);
-        console.warn(`Binance error details:`, JSON.stringify({
-          message: binanceError.message,
-          timeout: binanceError.timeout,
-          rateLimited: binanceError.rateLimited,
-          circuitOpen: binanceError.circuitOpen,
-          binanceBlocked: binanceError.binanceBlocked,
-          name: binanceError.name,
-        }));
         // Continue to CoinGecko fallback below
       }
     }

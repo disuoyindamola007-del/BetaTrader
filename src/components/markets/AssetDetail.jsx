@@ -5,7 +5,10 @@ import PriceChange from '../shared/PriceChange.jsx';
 import { useQuote, useCandles } from '../../hooks/useMarketData.js';
 import { calcEMA, calcRSI, calcBollinger, getCategory, isMarketOpen } from '../../services/marketDataService.js';
 
-const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
+const ALL_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
+// Crypto only supports 1h+ since CoinGecko OHLC doesn't provide sub-hourly data
+// and Binance (which could provide it) is blocked from Vercel (HTTP 451)
+const CRYPTO_TIMEFRAMES = ['1h', '4h', '1d', '1w'];
 
 // Map current timeframe to higher timeframe for institutional-grade analysis
 function getHigherTimeframe(tf) {
@@ -309,9 +312,13 @@ export default function AssetDetail() {
 
         {/* Timeframes */}
         <div className="flex gap-1.5 mb-4 overflow-x-auto scroll-hide">
-          {TIMEFRAMES.map(tf => (
-            <button key={tf} onClick={() => setTimeframe(tf)} disabled={isLoading} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all disabled:opacity-50 ${timeframe === tf ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800/60 text-slate-400 border border-slate-700/30 hover:text-slate-200'}`}>{tf}</button>
-          ))}
+          {(() => {
+            const category = getCategory(symbol, selectedAsset?.category);
+            const timeframes = category === 'crypto' ? CRYPTO_TIMEFRAMES : ALL_TIMEFRAMES;
+            return timeframes.map(tf => (
+              <button key={tf} onClick={() => setTimeframe(tf)} disabled={isLoading} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all disabled:opacity-50 ${timeframe === tf ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800/60 text-slate-400 border border-slate-700/30 hover:text-slate-200'}`}>{tf}</button>
+            ));
+          })()}
         </div>
 
         {/* Chart */}
