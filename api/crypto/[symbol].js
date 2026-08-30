@@ -391,13 +391,17 @@ export default async function handler(req, res) {
       } catch (krakenError) {
         // Kraken failed (blocked, rate limited, etc.) — fall back to CoinGecko
         console.error(`Kraken candle fetch FAILED for ${symbol}/${interval}:`, krakenError.message);
-        console.error(`Kraken error details:`, {
-          message: krakenError.message,
-          name: krakenError.name,
-          timeout: krakenError.timeout,
-          krakenBlocked: krakenError.krakenBlocked,
-          circuitOpen: krakenError.circuitOpen,
-        });
+        // Return error details for debugging (will be removed after testing)
+        if (req.query.debug === '1') {
+          return res.status(500).json({
+            error: 'Kraken failed',
+            details: krakenError.message,
+            name: krakenError.name,
+            timeout: krakenError.timeout,
+            krakenBlocked: krakenError.krakenBlocked,
+            circuitOpen: krakenError.circuitOpen,
+          });
+        }
         // Continue to CoinGecko fallback below
       }
     }
