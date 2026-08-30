@@ -80,7 +80,7 @@ export default async function handler(req, res) {
           }
         }
 
-        const reservation = await reserveTwelveDataCredits(symbols.length, isBatch ? 'forex-batch-quote' : 'forex-quote');
+        const reservation = await reserveTwelveDataCredits(symbols.length, isBatch ? `forex-batch-quote:${symbolParam}` : `forex-quote:${symbolParam}`);
         if (!reservation.allowed) throw twelveDataBudgetError(symbols.length, reservation.used);
         const url = `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`;
         try {
@@ -135,7 +135,7 @@ export default async function handler(req, res) {
     if (cached) {
       data = cached;
     } else {
-      const reservation = await reserveTwelveDataCredits(1, 'forex-candles');
+      const reservation = await reserveTwelveDataCredits(1, `forex-candles:${symbol}`);
       if (!reservation.allowed) throw twelveDataBudgetError(1, reservation.used);
       const url = `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbolParam)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`;
       try {

@@ -82,7 +82,7 @@ export default async function handler(req, res) {
       if (cached) {
         data = cached;
       } else {
-        const reservation = await reserveTwelveDataCredits(mappedSymbols.length, isBatch ? 'commodities-batch-quote' : 'commodities-quote');
+        const reservation = await reserveTwelveDataCredits(mappedSymbols.length, isBatch ? `commodities-batch-quote:${symbolParam}` : `commodities-quote:${symbolParam}`);
         if (!reservation.allowed) throw twelveDataBudgetError(mappedSymbols.length, reservation.used);
         const url = `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`;
         try {
@@ -130,7 +130,7 @@ export default async function handler(req, res) {
     if (cached) {
       data = cached;
     } else {
-      const reservation = await reserveTwelveDataCredits(1, 'commodities-candles');
+      const reservation = await reserveTwelveDataCredits(1, `commodities-candles:${symbol}`);
       if (!reservation.allowed) throw twelveDataBudgetError(1, reservation.used);
       const url = `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbolParam)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${TWELVE_DATA_API_KEY}`;
       try {

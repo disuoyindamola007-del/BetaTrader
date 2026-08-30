@@ -103,7 +103,7 @@ async function fetchTwelveDataQuote(symbolParam, apiKey) {
     throw err;
   }
 
-  const reservation = await reserveTwelveDataCredits(symbolParam.split(',').length, 'stocks-quote-fallback');
+  const reservation = await reserveTwelveDataCredits(symbolParam.split(',').length, `stocks-quote-fallback:${symbolParam}`);
   if (!reservation.allowed) throw twelveDataBudgetError(symbolParam.split(',').length, reservation.used);
   const url = `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${apiKey}`;
   let data;
@@ -138,7 +138,7 @@ async function fetchTwelveDataCandles(symbol, interval, outputsize, apiKey) {
     throw err;
   }
 
-  const reservation = await reserveTwelveDataCredits(1, 'stocks-candles-fallback');
+  const reservation = await reserveTwelveDataCredits(1, `stocks-candles-fallback:${symbol}`);
   if (!reservation.allowed) throw twelveDataBudgetError(1, reservation.used);
   const url = `${TWELVE_DATA_BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${tdInterval}&outputsize=${outputsize}&apikey=${apiKey}`;
   let data;
