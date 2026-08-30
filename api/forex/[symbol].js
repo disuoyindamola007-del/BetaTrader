@@ -8,12 +8,22 @@ import { logCacheHit, logCacheMiss } from '../../lib/structuredLogger.js';
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
-// TwelveData free "Basic 8" plan: 8 credits/min, 800/day.
-// /quote consumes 1 credit per symbol, so an 8-symbol batch uses all 8 credits.
-// Cache for 2 minutes to ensure at most 1 batch request per 2-minute window
-// (4 credits/min average, well within the 8/min limit).
-const FOREX_QUOTE_TTL_MS = 120_000;
-const FOREX_CANDLE_TTL_MS = 120_000;
+// TwelveData documents /quote at 1 API credit per symbol. The tracked
+// eight-pair batch therefore consumes all 8 Basic-plan credits at once.
+// Keep this expensive batch separate from the 2-minute single-quote TTL.
+const FOREX_BATCH_TTL_MS = 5 * 60_000;
+const FOREX_QUOTE_TTL_MS = 2 * 60_000;
+const FOREX_CANDLE_TTL_MS = 2 * 60_000;
+const FOREX_BATCH_COOLDOWN_MS = 60_000;
+const FOREX_BATCH_COOLDOWN_KEY = 'td:cooldown:forex-batch';
+
+async function activateBatchCooldown() {
+  await set(
+    FOREX_BATCH_COOLDOWN_KEY,
+    { until: Date.now() + FOREX_BATCH_COOLDOWN_MS },
+    FOREX_BATCH_COOLDOWN_MS
+  );
+}
 
 export default async function handler(req, res) {
   const { symbol, interval = '1h', outputsize = '200', type = 'candles' } = req.query;
@@ -34,6 +44,7 @@ export default async function handler(req, res) {
 
   try {
     if (isRateLimited('twelvedata')) {
+      res.setHeader('Retry-After', '60');
       return res.status(429).json({ error: 'Rate limit cooldown active — retry shortly', rateLimited: true, retryAfter: 60 });
     }
 
@@ -44,10 +55,11 @@ export default async function handler(req, res) {
     if (type === 'quote' || isBatch) {
       const symbolParam = symbols.join(',');
       const cacheKey = `td:quote:${cleanSymbols.sort().join(',')}`;
-      const cached = await get(cacheKey, FOREX_QUOTE_TTL_MS);
+      const quoteTtl = isBatch ? FOREX_BATCH_TTL_MS : FOREX_QUOTE_TTL_MS;
+      const cached = await get(cacheKey, quoteTtl);
 
       if (cached) {
-        logCacheHit({ provider: 'twelvedata', key: cacheKey, ttlMs: ttlFor('batch'), valueSize: JSON.stringify(cached).length });
+        logCacheHit({ provider: 'twelvedata', key: cacheKey, ttlMs: quoteTtl, valueSize: JSON.stringify(cached).length });
       } else {
         logCacheMiss({ provider: 'twelvedata', key: cacheKey });
       }
@@ -56,6 +68,17 @@ export default async function handler(req, res) {
       if (cached) {
         data = cached;
       } else {
+        if (isBatch) {
+          // Supabase-backed so a 429 seen by one Vercel instance prevents
+          // back-to-back provider attempts from other instances for 60s.
+          const batchCooldown = await get(FOREX_BATCH_COOLDOWN_KEY, FOREX_BATCH_COOLDOWN_MS);
+          if (batchCooldown) {
+            const retryAfter = Math.max(1, Math.ceil((batchCooldown.until - Date.now()) / 1000));
+            res.setHeader('Retry-After', String(retryAfter));
+            return res.status(429).json({ error: 'Forex batch cooldown active — retry shortly', rateLimited: true, retryAfter });
+          }
+        }
+
         const url = `${TWELVE_DATA_BASE}/quote?symbol=${encodeURIComponent(symbolParam)}&apikey=${TWELVE_DATA_API_KEY}`;
         try {
           data = await fetchJsonWithTimeout(url, {}, { provider: 'twelvedata' });
@@ -66,11 +89,17 @@ export default async function handler(req, res) {
           }
           throw error;
         }
+
         if (data?.status === 'error') {
-          checkTdError(data);
+          try {
+            checkTdError(data);
+          } catch (error) {
+            if (error.rateLimited && isBatch) await activateBatchCooldown();
+            throw error;
+          }
         }
         recordSuccess('twelvedata');
-        await set(cacheKey, data, FOREX_QUOTE_TTL_MS);
+        await set(cacheKey, data, quoteTtl);
       }
 
       const parsed = parseTdQuote(data, symbols);
@@ -82,7 +111,10 @@ export default async function handler(req, res) {
         }
       }
 
-      res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+      res.setHeader(
+        'Cache-Control',
+        isBatch ? 's-maxage=300, stale-while-revalidate=300' : 's-maxage=120, stale-while-revalidate=120'
+      );
       return res.status(200).json(parsed);
     }
 
@@ -91,7 +123,7 @@ export default async function handler(req, res) {
     const cached = await get(cacheKey, FOREX_CANDLE_TTL_MS);
 
     if (cached) {
-      logCacheHit({ provider: 'twelvedata', key: cacheKey, ttlMs: ttlFor('candles', interval), valueSize: JSON.stringify(cached).length });
+      logCacheHit({ provider: 'twelvedata', key: cacheKey, ttlMs: FOREX_CANDLE_TTL_MS, valueSize: JSON.stringify(cached).length });
     } else {
       logCacheMiss({ provider: 'twelvedata', key: cacheKey });
     }
@@ -137,10 +169,12 @@ export default async function handler(req, res) {
       recordFailure('twelvedata');
     }
     const status = error.rateLimited ? 429 : error.timeout ? 408 : 500;
+    if (error.rateLimited) res.setHeader('Retry-After', '60');
     return res.status(status).json({
       error: error.message,
       rateLimited: error.rateLimited || false,
       timeout: error.timeout || false,
+      ...(error.rateLimited ? { retryAfter: 60 } : {}),
     });
   }
 }

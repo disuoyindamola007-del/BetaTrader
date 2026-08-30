@@ -15,6 +15,7 @@ import { get, set, ttlFor } from '../lib/cache.js';
 import { isRateLimited, triggerRateLimitCooldown, getCooldownSeconds } from '../lib/rateLimitState.js';
 
 const API_BASE = '';
+const FOREX_BATCH_TTL_MS = 5 * 60_000;
 
 // In-flight request deduplication
 const inFlight = new Map();
@@ -193,7 +194,8 @@ export async function fetchBatchQuotes(symbolsByCategory) {
     if (!symbols?.length) continue;
 
     const batchCacheKey = `batch:${category}:${symbols.sort().join(',')}`;
-    const batchCached = await get(batchCacheKey, ttlFor('batch'));
+    const batchTtl = category === 'forex' ? FOREX_BATCH_TTL_MS : ttlFor('batch');
+    const batchCached = await get(batchCacheKey, batchTtl);
 
     if (batchCached) {
       for (const sym of symbols) {
@@ -220,7 +222,7 @@ export async function fetchBatchQuotes(symbolsByCategory) {
           results[sym] = perSym;
         }
       }
-      await set(batchCacheKey, data, ttlFor('batch'));
+      await set(batchCacheKey, data, batchTtl);
     } catch (err) {
       console.error(`[MarketDataService] Batch ${category} failed:`, err.message);
       if (err.rateLimited || err.isCooldown) {
