@@ -145,7 +145,7 @@ The Phase 1 TwelveData quota-error cooldown was per-instance only — each Verce
 - [x] Page persistence on refresh — `journalView`, `selectedNews`, `selectedPulseMetric` now persist to localStorage; users stay on the same page/sub-page after reload
 - [x] Review and tighten mobile responsiveness across screen sizes
 
-**Exit check:** [x] Phase 6 complete — loading states use skeletons, error states distinguish rate-limited vs unavailable, page state persists across refreshes.
+**Exit check:** [x] Phase 6 complete — loading states use skeletons, error states distinguish rate-limited vs unavailable, page state persists across refreshes, dark mode toggle works correctly with full light/dark theme support.
 
 ---
 
