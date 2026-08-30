@@ -1,5 +1,6 @@
 import { AppProvider, useApp } from './AppContext.jsx';
 import BottomNav from './components/shared/BottomNav.jsx';
+import ScrollToTop from './components/shared/ScrollToTop.jsx';
 import HomeScreen from './components/home/HomeScreen.jsx';
 import NewsScreen from './components/home/NewsScreen.jsx';
 import NewsDetail from './components/home/NewsDetail.jsx';
@@ -30,7 +31,8 @@ function AppContent() {
   };
 
   return (
-    <div className={`flex flex-col h-screen ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`} data-theme={darkMode ? 'dark' : 'light'}>
+    <div className={`flex flex-col h-screen ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-100 text-gray-900'}`} data-theme={darkMode ? 'dark' : 'light'}>
+      <ScrollToTop activeTab={activeTab} selectedAsset={selectedAsset} selectedNews={selectedNews} selectedPulseMetric={selectedPulseMetric} />
       <main className="flex-1 overflow-y-auto scroll-hide pb-24">
         {renderScreen()}
       </main>
