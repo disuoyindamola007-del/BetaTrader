@@ -149,6 +149,31 @@ The Phase 1 TwelveData quota-error cooldown was per-instance only — each Verce
 
 ---
 
+## Phase 6.5 — Institutional-grade AI analysis upgrade
+
+The prior AI analysis sent only RSI(14) and EMA 9/21/50 from a single timeframe, producing one 180-token paragraph. This upgrade brings the analysis closer to how institutional analysts actually evaluate charts.
+
+**Completed:**
+- [x] **Higher timeframe trend confirmation** — fetch a second timeframe at 4x the current one (1h→4h, 4h→1d, etc.) and compute its own EMA stack + RSI; the AI explicitly states whether the current timeframe agrees with or conflicts with the bigger picture, and lowers confidence when they disagree
+- [x] **Confluence over single indicators** — the prompt now passes Bollinger Bands upper/lower, 24h high/low, 24h volume, and price position percentiles within both the BB range and daily range; the AI counts how many independent signals (trend, momentum, volatility, volume) are aligned vs conflicting and reflects this as strong/moderate/mixed alignment
+- [x] **Volume as confirmation** — 24h volume is passed into the prompt; the AI comments on whether volume supports or fails to support the current price move
+- [x] **Range and volatility context** — Bollinger Band position and 24h high/low percentiles let the AI note when price is near volatility extremes or daily range boundaries
+- [x] **News as context, not override** — fetch existing news endpoint, filter for symbol relevance (check headline and related symbols); if relevant news exists, pass it with a relevance rating; if no relevant news, the AI states that plainly instead of inventing relevance; when news sentiment conflicts with technicals, the AI states the disagreement explicitly
+- [x] **Output structure and language** — increased max tokens from 180 to 500; structured output with labeled sections: Trend Read, Momentum, Volatility & Range, News Context (if relevant), Overall Read; plain language throughout; fully advisory — no price targets, entry zones, stop losses, or buy/sell recommendations
+- [x] **Higher timeframe display in UI** — added a new card below indicators showing the higher timeframe RSI and EMA stack direction (e.g., "Higher Timeframe (4h): RSI: 58, EMA Stack: Bullish")
+- [x] **Graceful degradation** — when higher timeframe data is insufficient (fewer than 50 candles), the analysis falls back to current timeframe only and notes this explicitly
+- [x] **Preserved caching and rate limiting** — both timeframe candle fetches reuse existing `useCandles` caching; Groq rate limiting and circuit breaker remain intact; analysis cache TTL stays at 5 minutes
+
+**Cost impact:** +1 candle API call per unique asset+timeframe combination (cached). For a user viewing AAPL on 1h, the system fetches 1h + 4h candles once, then serves from cache. Groq token usage increased from ~180 to ~500 per analysis — still well within free tier limits.
+
+**Files modified:**
+- `api/analyze/[symbol].js` — complete rewrite with institutional-grade prompt, higher timeframe support, confluence analysis, news integration, 500-token output
+- `src/components/markets/AssetDetail.jsx` — fetch higher timeframe candles, compute dual indicators, fetch/filter news, display higher timeframe trend card, render structured analysis output
+
+**Exit check:** [x] Phase 6.5 complete — commit `41f01ca` pushed to `main`, `npm run build` passes, AI analysis now includes higher timeframe confirmation, confluence counting, volume assessment, Bollinger Band context, and news relevance filtering with structured labeled output.
+
+---
+
 ## Phase 7 — Code cleanup
 
 - Remove or archive the three untracked `_backup-before-*` folders (`_backup-before-phase4`, `_backup-before-phase4-20260721-223446`, `_backup-before-kimi-merge`) once confirmed unnecessary
