@@ -101,12 +101,18 @@ export default function AssetDetail() {
       const { createChart, CandlestickSeries, HistogramSeries, LineSeries } = charts;
       if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
       chartContainerRef.current.innerHTML = '';
+      // Detect current theme for chart colors
+      const isDark = document.documentElement.classList.contains('dark');
+      const textColor = isDark ? '#8892A4' : '#64748B';
+      const gridColor = isDark ? 'rgba(42, 49, 80, 0.3)' : 'rgba(226, 232, 240, 0.5)';
+      const borderColor = isDark ? 'rgba(42, 49, 80, 0.5)' : 'rgba(226, 232, 240, 0.8)';
+
       const chart = createChart(chartContainerRef.current, {
-        layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontFamily: 'system-ui, -apple-system, sans-serif' },
-        grid: { vertLines: { color: 'rgba(51, 65, 85, 0.3)' }, horzLines: { color: 'rgba(51, 65, 85, 0.3)' } },
+        layout: { background: { color: 'transparent' }, textColor, fontFamily: 'system-ui, -apple-system, sans-serif' },
+        grid: { vertLines: { color: gridColor }, horzLines: { color: gridColor } },
         crosshair: { mode: 1 },
-        rightPriceScale: { borderColor: 'rgba(51, 65, 85, 0.5)', scaleMargins: { top: 0.05, bottom: 0.25 } },
-        timeScale: { borderColor: 'rgba(51, 65, 85, 0.5)', timeVisible: true },
+        rightPriceScale: { borderColor, scaleMargins: { top: 0.05, bottom: 0.25 } },
+        timeScale: { borderColor, timeVisible: true },
         height: 360,
       });
       const candleSeries = chart.addSeries(CandlestickSeries, {

@@ -75,12 +75,18 @@ export default function HomeScreen() {
       const { createChart, CandlestickSeries } = charts;
       if (homeChartInstance.current) { homeChartInstance.current.remove(); homeChartInstance.current = null; }
       homeChartRef.current.innerHTML = '';
+      // Detect current theme for chart colors
+      const isDark = document.documentElement.classList.contains('dark');
+      const textColor = isDark ? '#8892A4' : '#64748B';
+      const gridColor = isDark ? 'rgba(42, 49, 80, 0.3)' : 'rgba(226, 232, 240, 0.5)';
+      const borderColor = isDark ? 'rgba(42, 49, 80, 0.5)' : 'rgba(226, 232, 240, 0.8)';
+
       const chart = createChart(homeChartRef.current, {
-        layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontFamily: 'system-ui, -apple-system, sans-serif' },
-        grid: { vertLines: { color: 'rgba(51, 65, 85, 0.3)' }, horzLines: { color: 'rgba(51, 65, 85, 0.3)' } },
+        layout: { background: { color: 'transparent' }, textColor, fontFamily: 'system-ui, -apple-system, sans-serif' },
+        grid: { vertLines: { color: gridColor }, horzLines: { color: gridColor } },
         crosshair: { mode: 0 },
-        rightPriceScale: { borderColor: 'rgba(51, 65, 85, 0.5)' },
-        timeScale: { borderColor: 'rgba(51, 65, 85, 0.5)', timeVisible: true },
+        rightPriceScale: { borderColor },
+        timeScale: { borderColor, timeVisible: true },
         height: 180,
         handleScroll: false,
         handleScale: false,
@@ -148,8 +154,8 @@ export default function HomeScreen() {
       </div>
 
       <div className="mb-5">
-        <p className="text-sm text-slate-400">{greeting}, {userName}</p>
-        <p className="text-xs text-slate-500">{session} &bull; {currentTime} UTC</p>
+        <p className="text-sm theme-text-secondary">{greeting}, {userName}</p>
+        <p className="text-xs theme-text-secondary">{session} &bull; {currentTime} UTC</p>
       </div>
 
       <div className="mb-5 bg-gradient-to-br from-emerald-500/8 via-emerald-500/4 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4 glow-emerald">
@@ -168,17 +174,17 @@ export default function HomeScreen() {
         )}
         {!briefingLoading && liveBriefing && <>
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-sm font-semibold text-slate-100">{liveBriefing.sentiment}</span>
+            <span className="text-sm font-semibold theme-text-primary">{liveBriefing.sentiment}</span>
             <span className="badge-bullish">{liveBriefing.confidence}% Conf</span>
           </div>
-          <p className="text-[13px] text-slate-300 leading-relaxed mb-4">{liveBriefing.summary}</p>
+          <p className="text-[13px] theme-text-primary leading-relaxed mb-4">{liveBriefing.summary}</p>
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Volatility</p><p className="text-sm font-semibold text-amber-400">{liveBriefing.volatility}</p></div>
-            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Key Risk</p><p className="text-sm font-semibold text-slate-200">{liveBriefing.keyRisk}</p></div>
+            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider">Key Risk</p><p className="text-sm font-semibold text-slate-200 theme-text-primary">{liveBriefing.keyRisk}</p></div>
           </div>
           {briefingExpanded && <div className="mb-4 border-t border-slate-700/40 pt-3 space-y-3">
-            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Key Drivers</p><ul className="space-y-1">{liveBriefing.keyDrivers.map((item, index) => <li key={index} className="text-xs text-slate-300">• {item}</li>)}</ul></div>
-            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">What to Watch</p><ul className="space-y-1">{liveBriefing.watchNext.map((item, index) => <li key={index} className="text-xs text-slate-300">• {item}</li>)}</ul></div>
+            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Key Drivers</p><ul className="space-y-1">{liveBriefing.keyDrivers.map((item, index) => <li key={index} className="text-xs theme-text-primary">• {item}</li>)}</ul></div>
+            <div><p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">What to Watch</p><ul className="space-y-1">{liveBriefing.watchNext.map((item, index) => <li key={index} className="text-xs theme-text-primary">• {item}</li>)}</ul></div>
           </div>}
           <button onClick={() => setBriefingExpanded(value => !value)} className="w-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-emerald-500/15 transition-colors">
             {briefingExpanded ? 'Show Less' : 'Read Full Analysis'} <ArrowRight size={14} className={briefingExpanded ? '-rotate-90' : 'rotate-90'} />
@@ -207,9 +213,9 @@ export default function HomeScreen() {
           {livePulse.map((item) => (
             <button key={item.label} onClick={() => navigateToPulseMetric(item)} className="glass-card p-3 text-center hover:border-emerald-500/30 active:scale-[0.98] transition-all" aria-label={`Open ${item.label} details`}>
               <p className="text-[10px] text-slate-500 mb-1">{item.label}</p>
-              <p className="text-base font-bold font-mono text-slate-100">{item.value}</p>
+              <p className="text-base font-bold font-mono theme-text-primary">{item.value}</p>
               <p className={`text-[10px] font-medium ${item.color === 'emerald' ? 'text-emerald-400' : item.color === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>{item.sublabel}</p>
-              <p className="text-[9px] text-slate-600 mt-1">Tap to explain</p>
+              <p className="text-[9px] theme-text-muted mt-1">Tap to explain</p>
             </button>
           ))}
         </div>}
@@ -288,7 +294,7 @@ export default function HomeScreen() {
           )}
           {!newsLoading && !newsError && displayedNews.slice(0, 3).map((news) => (
             <button key={news.id} onClick={() => navigateToNews(news)} className="glass-card-hover p-4 text-left">
-              <div className="flex items-center gap-2 mb-2"><span className="text-xs text-slate-500">{news.source}</span><span className="text-xs text-slate-600">&bull;</span><span className="text-xs text-slate-500">{news.datetime ? new Date(news.datetime * 1000).toLocaleDateString() : ''}</span></div>
+              <div className="flex items-center gap-2 mb-2"><span className="text-xs theme-text-secondary">{news.source}</span><span className="text-xs text-slate-600">&bull;</span><span className="text-xs theme-text-secondary">{news.datetime ? new Date(news.datetime * 1000).toLocaleDateString() : ''}</span></div>
               <p className="text-sm font-semibold leading-relaxed mb-3">{news.headline}</p>
               <div className="flex gap-2 flex-wrap">{news.related.map(tag => <span key={tag} className="text-[10px] text-slate-400 bg-slate-800/60 px-2 py-1 rounded-md border border-slate-700/30">{tag}</span>)}<span className="text-[10px] text-emerald-400 bg-emerald-500/8 px-2 py-1 rounded-md border border-emerald-500/15 flex items-center gap-1"><Sparkles size={10} /> AI Summary</span></div>
             </button>

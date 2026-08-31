@@ -429,3 +429,13 @@
     box-shadow: 0 0 20px var(--color-green-glow);
   }
 }
+
+/* ===== THEME-AWARE UTILITY CLASSES ===== */
+.theme-bg-primary { background-color: var(--bg-primary); }
+.theme-bg-secondary { background-color: var(--bg-secondary); }
+.theme-bg-tertiary { background-color: var(--bg-tertiary); }
+.theme-text-primary { color: var(--text-primary); }
+.theme-text-secondary { color: var(--text-secondary); }
+.theme-text-muted { color: var(--text-muted); }
+.theme-border { border-color: var(--border-color); }
+.theme-border-color { color: var(--border-color); }

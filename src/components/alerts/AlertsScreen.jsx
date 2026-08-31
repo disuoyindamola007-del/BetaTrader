@@ -118,13 +118,13 @@ export default function AlertsScreen() {
 
       {showForm && (
         <div className="glass-card p-4 mb-4 flex flex-col gap-3">
-          <p className="text-sm font-semibold text-slate-300">New Price Alert</p>
+          <p className="text-sm font-semibold theme-text-primary">New Price Alert</p>
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-slate-500 uppercase tracking-wider">Asset Symbol</label>
+              <label className="text-[10px] theme-text-secondary uppercase tracking-wider">Asset Symbol</label>
               {formAsset && searchResults.length === 0 && (
-                <span className="text-[10px] text-slate-400 font-mono">Manual entry</span>
+                <span className="text-[10px] theme-text-secondary font-mono">Manual entry</span>
               )}
             </div>
             <div className="relative">
@@ -144,27 +144,27 @@ export default function AlertsScreen() {
                 className="w-full input-field pr-8"
               />
               {searchQuery && (
-                <button onClick={() => { setSearchQuery(''); setFormAsset(''); setShowSearchResults(false); setFormError(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                <button onClick={() => { setSearchQuery(''); setFormAsset(''); setShowSearchResults(false); setFormError(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 theme-text-secondary hover:theme-text-primary">
                   <X size={14} />
                 </button>
               )}
               {showSearchResults && searchQuery.trim() && (
-                <div className="absolute z-50 w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                  {searchLoading && <div className="p-3 text-xs text-slate-500 text-center">Searching...</div>}
+                <div className="absolute z-50 w-full mt-1 theme-bg-secondary theme-border rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                  {searchLoading && <div className="p-3 text-xs theme-text-secondary text-center">Searching...</div>}
                   {!searchLoading && searchResults.length === 0 && (
-                    <div className="p-3 text-xs text-slate-500 text-center">No results — you can still create an alert manually.</div>
+                    <div className="p-3 text-xs theme-text-secondary text-center">No results — you can still create an alert manually.</div>
                   )}
                   {!searchLoading && searchResults.map(result => (
                     <button
                       key={`${result.source}:${result.symbol}`}
                       onClick={() => selectSearchResult(result)}
-                      className="w-full text-left p-3 flex items-center justify-between hover:bg-slate-800 transition-colors border-b border-slate-800/50 last:border-0"
+                      className="w-full text-left p-3 flex items-center justify-between hover:theme-bg-tertiary transition-colors theme-border last:border-0"
                     >
                       <div>
-                        <span className="text-sm font-semibold text-slate-200">{result.symbol}</span>
-                        <span className="text-xs text-slate-500 ml-2">{result.name}</span>
+                        <span className="text-sm font-semibold theme-text-primary">{result.symbol}</span>
+                        <span className="text-xs theme-text-secondary ml-2">{result.name}</span>
                       </div>
-                      <span className="text-[10px] text-slate-600 uppercase bg-slate-800 px-2 py-0.5 rounded">{result.category}</span>
+                      <span className="text-[10px] text-slate-600 uppercase theme-bg-secondary px-2 py-0.5 rounded">{result.category}</span>
                     </button>
                   ))}
                 </div>
@@ -174,7 +174,7 @@ export default function AlertsScreen() {
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Condition</label>
+              <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Condition</label>
               <select
                 value={formCondition}
                 onChange={e => setFormCondition(e.target.value)}
@@ -185,7 +185,7 @@ export default function AlertsScreen() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Target Price</label>
+              <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Target Price</label>
               <input
                 type="number"
                 placeholder="1.0900"

@@ -81,20 +81,20 @@ export default function MarketsScreen() {
             <button
               key={`${result.category}:${result.symbol}:${result.providerSymbol || result.source}`}
               onClick={() => navigateToAsset(assetFromSearchResult(result))}
-              className="w-full min-h-14 py-3 flex items-center justify-between gap-3 text-left border-b border-slate-800/40 last:border-b-0 hover:bg-slate-900/60 transition-colors"
+              className="w-full min-h-14 py-3 flex items-center justify-between gap-3 text-left border-b theme-border last:border-b-0 hover:theme-bg-tertiary transition-colors"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold">{result.symbol}</span>
-                  <span className="text-[10px] uppercase text-slate-500">{result.category}</span>
+                  <span className="text-[10px] uppercase theme-text-secondary">{result.category}</span>
                 </div>
-                <p className="text-xs text-slate-500 truncate">{result.name}</p>
+                <p className="text-xs theme-text-secondary truncate">{result.name}</p>
               </div>
-              <ChevronRight size={16} className="shrink-0 text-slate-600" />
+              <ChevronRight size={16} className="shrink-0 theme-text-secondary" />
             </button>
           ))}
           {!searchLoading && searchResults.length === 0 && (
-            <p className="py-8 text-center text-sm text-slate-500">No supported symbols found</p>
+            <p className="py-8 text-center text-sm text-slate-500 theme-text-secondary">No supported symbols found</p>
           )}
           {searchError && <p className="pb-3 text-center text-xs text-amber-400">Search is temporarily unavailable.</p>}
         </div>
@@ -103,7 +103,7 @@ export default function MarketsScreen() {
       {/* Categories */}
       <div className="flex gap-2 overflow-x-auto scroll-hide mb-4 pb-1">
         {categories.map(cat => (
-          <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800/60 text-slate-400 border border-slate-700/30 hover:text-slate-200'}`}>
+          <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-emerald-500 text-slate-950' : 'theme-bg-secondary theme-text-secondary theme-border hover:theme-text-primary'}`}>
             {cat.toUpperCase()}
           </button>
         ))}
@@ -123,9 +123,9 @@ export default function MarketsScreen() {
             >
               <div className="flex items-start justify-between mb-2">
                 <p className="text-sm font-bold">{asset.symbol}</p>
-                {unsupportedSymbols.has(asset.symbol) ? <AlertTriangle size={14} className="text-amber-400" /> : <ChevronRight size={14} className="text-slate-600" />}
+                {unsupportedSymbols.has(asset.symbol) ? <AlertTriangle size={14} className="text-amber-400" /> : <ChevronRight size={14} className="theme-text-secondary" />}
               </div>
-              <p className="text-[11px] text-slate-500 mb-3 truncate">{asset.name}</p>
+              <p className="text-[11px] theme-text-secondary mb-3 truncate">{asset.name}</p>
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-sm font-bold font-mono">
@@ -150,7 +150,7 @@ export default function MarketsScreen() {
         })}
       </div>
 
-      {!searchQuery.trim() && filteredAssets.length === 0 && <div className="text-center py-12"><p className="text-slate-500 text-sm">No assets found</p></div>}
+      {!searchQuery.trim() && filteredAssets.length === 0 && <div className="text-center py-12"><p className="text-slate-500 theme-text-secondary">No assets found</p></div>}
     </div>
   );
 }

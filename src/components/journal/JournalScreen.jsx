@@ -532,7 +532,7 @@ export default function JournalScreen() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-2 bg-slate-900/95 backdrop-blur-sm p-1 rounded-xl">
+        <div className="flex gap-1 mb-2 p-1 rounded-xl" style={{ backgroundColor: 'var(--bg-primary)', backdropFilter: 'blur(8px)' }}>
           {[
             { id: 'trades', label: 'My Trades', icon: BookOpen },
             { id: 'log', label: 'Log Trade', icon: Plus },
@@ -544,8 +544,9 @@ export default function JournalScreen() {
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === tab.id ? 'bg-slate-800 text-emerald-400' : 'text-slate-500 hover:text-slate-300'
+                  activeTab === tab.id ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'
                 }`}
+                style={activeTab === tab.id ? { backgroundColor: 'var(--bg-secondary)' } : {}}
               >
                 <Icon size={14} />
                 {tab.label}
@@ -560,19 +561,19 @@ export default function JournalScreen() {
         <>
           <div className="grid grid-cols-2 gap-2 mb-4">
             <div className="glass-card p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total Trades</p>
+              <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Total Trades</p>
               <p className="text-xl font-bold font-mono">{tradesWithPnL.length}</p>
             </div>
             <div className="glass-card p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Open</p>
+              <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Open</p>
               <p className="text-xl font-bold font-mono text-amber-400">{openTrades.length}</p>
             </div>
             <div className="glass-card p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Closed</p>
+              <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Closed</p>
               <p className="text-xl font-bold font-mono">{closedTrades.length}</p>
             </div>
             <div className="glass-card p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Win Rate</p>
+              <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Win Rate</p>
               <p className="text-xl font-bold font-mono text-emerald-400">{stats.winRate}%</p>
             </div>
           </div>
@@ -580,8 +581,8 @@ export default function JournalScreen() {
           {tradesWithPnL.length === 0 && (
             <div className="glass-card p-8 text-center">
               <BookOpen size={40} className="mx-auto text-slate-700 mb-3" />
-              <p className="text-sm font-semibold text-slate-300 mb-1">No trades logged yet</p>
-              <p className="text-xs text-slate-500">Tap the + button to log your first trade.</p>
+              <p className="text-sm font-semibold theme-text-primary mb-1">No trades logged yet</p>
+              <p className="text-xs theme-text-secondary">Tap the + button to log your first trade.</p>
             </div>
           )}
 
@@ -652,7 +653,7 @@ export default function JournalScreen() {
                       </div>
                       <div className="flex items-center gap-2">
                         {trade.status === 'open' ? (
-                          <span className="text-xs text-slate-500 text-right">
+                          <span className="text-xs theme-text-secondary text-right">
                             TP: <span className="text-emerald-400 font-mono">+{formatMoney(trade.tpPnl || 0)}</span>{' '}
                             SL: <span className="text-red-400 font-mono">{formatMoney(trade.slPnl || 0)}</span>
                           </span>
@@ -678,7 +679,7 @@ export default function JournalScreen() {
           <div className="flex items-center gap-3 mb-5">
             <button
               onClick={() => setSelectedTrade(null)}
-              className="w-9 h-9 bg-slate-800 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors"
+              className="w-9 h-9 theme-bg-secondary rounded-xl flex items-center justify-center theme-text-secondary hover:theme-text-primary transition-colors"
             >
               <ChevronRight size={18} className="rotate-180" />
             </button>
@@ -707,10 +708,10 @@ export default function JournalScreen() {
                     {selectedTrade.pnl >= 0 ? '+' : ''}{formatMoney(selectedTrade.pnl)}
                   </span>
                 ) : (
-                  <span className="text-xs text-slate-500">No realized P/L yet</span>
+                  <span className="text-xs theme-text-secondary">No realized P/L yet</span>
                 )}
               </div>
-              <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
+              <div className="flex items-center gap-4 text-xs theme-text-secondary flex-wrap">
                 <span className="flex items-center gap-1"><Calendar size={12} /> {selectedTrade.date}</span>
                 <span className="flex items-center gap-1"><Clock size={12} /> {selectedTrade.timeframe}</span>
                 {selectedTrade.assetClass && <span className="capitalize bg-slate-800 px-2 py-0.5 rounded">{selectedTrade.assetClass}</span>}
@@ -719,38 +720,38 @@ export default function JournalScreen() {
 
             {/* Prices */}
             <div className="glass-card p-4 space-y-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Prices</p>
+              <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Prices</p>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Entry</span>
-                <span className="font-mono text-slate-200">${Number(selectedTrade.entry).toFixed(4)}</span>
+                <span className="theme-text-secondary">Entry</span>
+                <span className="font-mono theme-text-primary">${Number(selectedTrade.entry).toFixed(4)}</span>
               </div>
               {selectedTrade.status === 'closed' && selectedTrade.exit && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Exit</span>
-                  <span className="font-mono text-slate-200">${Number(selectedTrade.exit).toFixed(4)}</span>
+                  <span className="theme-text-secondary">Exit</span>
+                  <span className="font-mono theme-text-primary">${Number(selectedTrade.exit).toFixed(4)}</span>
                 </div>
               )}
               {selectedTrade.status === 'open' && (
                 <>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Stop Loss</span>
-                    <span className="font-mono text-slate-200">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
+                    <span className="theme-text-secondary">Stop Loss</span>
+                    <span className="font-mono theme-text-primary">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Take Profit</span>
-                    <span className="font-mono text-slate-200">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
+                    <span className="theme-text-secondary">Take Profit</span>
+                    <span className="font-mono theme-text-primary">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
                   </div>
                 </>
               )}
               {selectedTrade.status === 'closed' && (selectedTrade.stopLoss || selectedTrade.takeProfit) && (
                 <>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Stop Loss</span>
-                    <span className="font-mono text-slate-200">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
+                    <span className="theme-text-secondary">Stop Loss</span>
+                    <span className="font-mono theme-text-primary">{selectedTrade.stopLoss ? `$${Number(selectedTrade.stopLoss).toFixed(4)}` : '—'}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Take Profit</span>
-                    <span className="font-mono text-slate-200">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
+                    <span className="theme-text-secondary">Take Profit</span>
+                    <span className="font-mono theme-text-primary">{selectedTrade.takeProfit ? `$${Number(selectedTrade.takeProfit).toFixed(4)}` : '—'}</span>
                   </div>
                 </>
               )}
@@ -759,8 +760,8 @@ export default function JournalScreen() {
             {/* Size */}
             {(selectedTrade.lotSize || selectedTrade.quantity || selectedTrade.capital) && (
               <div className="glass-card p-4">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Size</p>
-                <p className="text-sm font-mono text-slate-200">
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Size</p>
+                <p className="text-sm font-mono theme-text-primary">
                   {selectedTrade.lotSize && `Lot Size: ${selectedTrade.lotSize}`}
                   {selectedTrade.quantity && selectedTrade.assetClass !== 'crypto' && `Quantity: ${selectedTrade.quantity}`}
                   {selectedTrade.capital && `Capital: ${formatMoney(selectedTrade.capital)}`}
@@ -772,7 +773,7 @@ export default function JournalScreen() {
             {/* Projected Outcomes (open trades) */}
             {selectedTrade.status === 'open' && selectedTrade.tpPnl != null && (
               <div className="glass-card p-4">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Projected Outcomes</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-3">Projected Outcomes</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3">
                     <p className="text-[10px] text-emerald-500 uppercase tracking-wider mb-1">If TP Hits</p>
@@ -789,7 +790,7 @@ export default function JournalScreen() {
             {/* Result (closed trades) */}
             {selectedTrade.status === 'closed' && selectedTrade.result && (
               <div className="glass-card p-4">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Result</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Result</p>
                 <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
                   selectedTrade.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
                   selectedTrade.result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
@@ -802,7 +803,7 @@ export default function JournalScreen() {
             {/* Review */}
             {(selectedTrade.bias || selectedTrade.emotion || selectedTrade.strategy) && (
               <div className="glass-card p-4 space-y-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Review</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Review</p>
                 {selectedTrade.bias && (
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-400">Bias</span>
@@ -827,7 +828,7 @@ export default function JournalScreen() {
             {/* Notes */}
             {selectedTrade.notes && (
               <div className="glass-card p-4">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Notes</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Notes</p>
                 <p className="text-sm text-slate-300">{selectedTrade.notes}</p>
               </div>
             )}
@@ -885,7 +886,7 @@ export default function JournalScreen() {
               {/* Asset Search */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider">Asset Symbol</label>
+                  <label className="text-[10px] theme-text-secondary uppercase tracking-wider">Asset Symbol</label>
                   {form.assetSymbol && form.assetName && (
                     <span className="text-[10px] text-emerald-400 font-mono">{form.assetClass}</span>
                   )}
@@ -914,9 +915,9 @@ export default function JournalScreen() {
                   )}
                   {showSearchResults && searchQuery.trim() && (
                     <div className="absolute z-50 w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                      {searchLoading && <div className="p-3 text-xs text-slate-500 text-center">Searching...</div>}
+                      {searchLoading && <div className="p-3 text-xs theme-text-secondary text-center">Searching...</div>}
                       {!searchLoading && searchResults.length === 0 && (
-                        <div className="p-3 text-xs text-slate-500 text-center">No results — you can still log it manually.</div>
+                        <div className="p-3 text-xs theme-text-secondary text-center">No results — you can still log it manually.</div>
                       )}
                       {!searchLoading && searchResults.map(result => (
                         <button
@@ -926,7 +927,7 @@ export default function JournalScreen() {
                         >
                           <div>
                             <span className="text-sm font-semibold text-slate-200">{result.symbol}</span>
-                            <span className="text-xs text-slate-500 ml-2">{result.name}</span>
+                            <span className="text-xs theme-text-secondary ml-2">{result.name}</span>
                           </div>
                           <span className="text-[10px] text-slate-600 uppercase bg-slate-800 px-2 py-0.5 rounded">{result.category}</span>
                         </button>
@@ -942,7 +943,7 @@ export default function JournalScreen() {
 
               {/* Direction */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Direction</label>
+                <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Direction</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => updateField('direction', 'buy')}
@@ -970,7 +971,7 @@ export default function JournalScreen() {
 
               {/* Timeframe */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Timeframe</label>
+                <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Timeframe</label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {TIMEFRAME_OPTIONS.map(tf => (
                     <button
@@ -1019,7 +1020,7 @@ export default function JournalScreen() {
 
               {/* Status Toggle */}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Trade Status</label>
+                <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Trade Status</label>
                 <div className="flex gap-1 bg-slate-800 p-1 rounded-xl">
                   <button
                     onClick={() => { updateField('status', 'closed'); updateField('exit', ''); updateField('stopLoss', ''); updateField('takeProfit', ''); }}
@@ -1045,7 +1046,7 @@ export default function JournalScreen() {
               </div>
 
               {form.assetSymbol && (
-                <p className="text-xs text-slate-500">
+                <p className="text-xs theme-text-secondary">
                   {form.assetSymbol} • {form.direction === 'buy' ? 'Long' : 'Short'} • {form.timeframe === 'custom' ? form.timeframeCustom : form.timeframe}
                   {fieldConfig.hasLeverage && form.leverage ? ` • ${form.leverage}x Leverage` : ''}
                 </p>
@@ -1053,7 +1054,7 @@ export default function JournalScreen() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Entry Price *</label>
+                  <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Entry Price *</label>
                   <input
                     type="number"
                     placeholder="1.0854"
@@ -1065,7 +1066,7 @@ export default function JournalScreen() {
                 </div>
                 {form.status === 'closed' && (
                   <div>
-                    <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Exit Price *</label>
+                    <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Exit Price *</label>
                     <input
                       type="number"
                       placeholder="1.0895"
@@ -1079,7 +1080,7 @@ export default function JournalScreen() {
               </div>
 
               <div>
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">
+                <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">
                   {fieldConfig.quantityLabel} *
                 </label>
                 <input
@@ -1095,7 +1096,7 @@ export default function JournalScreen() {
               {/* Forex Lot Type */}
               {fieldConfig.usesPips && (
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Lot Type</label>
+                  <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Lot Type</label>
                   <div className="flex gap-1 bg-slate-800 p-1 rounded-xl">
                     {['standard', 'mini', 'micro'].map(type => (
                       <button
@@ -1117,7 +1118,7 @@ export default function JournalScreen() {
 
               {fieldConfig.hasLeverage && (
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Leverage</label>
+                  <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Leverage</label>
                   <input
                     type="number"
                     placeholder="10"
@@ -1132,7 +1133,7 @@ export default function JournalScreen() {
               {form.status === 'open' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Stop Loss *</label>
+                    <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Stop Loss *</label>
                     <input
                       type="number"
                       placeholder="1.0820"
@@ -1144,7 +1145,7 @@ export default function JournalScreen() {
                     {formErrors.step2.slError && <p className="text-xs text-red-400 mt-1">{formErrors.step2.slError}</p>}
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Take Profit *</label>
+                    <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Take Profit *</label>
                     <input
                       type="number"
                       placeholder="1.0910"
@@ -1201,13 +1202,13 @@ export default function JournalScreen() {
                 {isClosed ? (
                   // Closed trade: realized P/L
                   <div className="glass-card bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Realized P/L</p>
+                    <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Realized P/L</p>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-2xl font-bold font-mono" style={{ color: closedPnl >= 0 ? '#10b981' : '#ef4444' }}>
                           {closedPnl >= 0 ? '+' : ''}{formatMoney(closedPnl)}
                         </p>
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p className="text-xs theme-text-secondary mt-1">
                           Entry: ${entry.toFixed(4)} → Exit: ${Number(form.exit).toFixed(4)} • {fieldConfig.quantityLabel}: {form[fieldConfig.quantityKey]}
                           {fieldConfig.hasLeverage && form.leverage ? ` • ${form.leverage}x` : ''}
                         </p>
@@ -1223,14 +1224,14 @@ export default function JournalScreen() {
                 ) : (
                   // Open trade: projected outcomes
                   <div className="glass-card bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Projected Outcomes</p>
+                    <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Projected Outcomes</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-[10px] text-emerald-500 uppercase tracking-wider mb-1">If TP Hits</p>
                         <p className="text-xl font-bold font-mono text-emerald-400">
                           {tpPnl >= 0 ? '+' : ''}{formatMoney(tpPnl)}
                         </p>
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p className="text-xs theme-text-secondary mt-1">
                           Entry: ${entry.toFixed(4)} → TP: ${Number(form.takeProfit).toFixed(4)}
                         </p>
                       </div>
@@ -1239,7 +1240,7 @@ export default function JournalScreen() {
                         <p className="text-xl font-bold font-mono text-red-400">
                           {slPnl >= 0 ? '+' : ''}{formatMoney(slPnl)}
                         </p>
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p className="text-xs theme-text-secondary mt-1">
                           Entry: ${entry.toFixed(4)} → SL: ${Number(form.stopLoss).toFixed(4)}
                         </p>
                       </div>
@@ -1251,7 +1252,7 @@ export default function JournalScreen() {
                 )}
 
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">Market Bias *</label>
+                  <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2 block">Market Bias *</label>
                   <div className="grid grid-cols-3 gap-2">
                     {BIAS_OPTIONS.map(opt => {
                       const Icon = opt.icon;
@@ -1275,7 +1276,7 @@ export default function JournalScreen() {
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">Emotional State *</label>
+                  <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2 block">Emotional State *</label>
                   <div className="grid grid-cols-2 gap-2">
                     {EMOTIONS.map(opt => {
                       const Icon = opt.icon;
@@ -1299,7 +1300,7 @@ export default function JournalScreen() {
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">Strategy *</label>
+                  <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2 block">Strategy *</label>
                   <div className="grid grid-cols-2 gap-2">
                     {STRATEGIES.map(s => {
                       const Icon = STRATEGY_ICONS[s] || TrendingUp;
@@ -1323,7 +1324,7 @@ export default function JournalScreen() {
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Notes</label>
+                  <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Notes</label>
                   <textarea
                     placeholder="Explain your setup..."
                     rows={3}
@@ -1348,8 +1349,8 @@ export default function JournalScreen() {
         closedTrades.length === 0 ? (
           <div className="glass-card p-8 text-center">
             <BarChart3 size={48} className="mx-auto text-slate-700 mb-3" />
-            <p className="text-sm font-semibold text-slate-300 mb-1">No performance data yet</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-sm font-semibold theme-text-primary mb-1">No performance data yet</p>
+            <p className="text-xs theme-text-secondary">
               {openTrades.length > 0
                 ? `You have ${openTrades.length} open position${openTrades.length > 1 ? 's' : ''}. Close them to see performance stats.`
                 : 'Log closed trades to see your win rate, P&L, and more.'}
@@ -1366,21 +1367,21 @@ export default function JournalScreen() {
             )}
             <div className="grid grid-cols-2 gap-2">
               <div className="glass-card p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total P&L</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Total P&L</p>
                 <p className={`text-lg font-bold font-mono ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   {stats.totalPL >= 0 ? '+' : ''}{formatMoney(stats.totalPL)}
                 </p>
               </div>
               <div className="glass-card p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Win Rate</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Win Rate</p>
                 <p className="text-lg font-bold font-mono text-emerald-400">{stats.winRate}%</p>
               </div>
               <div className="glass-card p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Avg Win</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Avg Win</p>
                 <p className="text-lg font-bold font-mono text-emerald-400">{avgWin > 0 ? formatMoney(avgWin) : 'No wins'}</p>
               </div>
               <div className="glass-card p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Avg Loss</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Avg Loss</p>
                 {losingTrades.length > 0 ? (
                   <p className="text-lg font-bold font-mono text-red-400">{avgLoss < 0 ? formatMoney(avgLoss) : 'No losses'}</p>
                 ) : (
@@ -1390,18 +1391,18 @@ export default function JournalScreen() {
             </div>
             {bestTrade && (
               <div className="glass-card p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Best Trade</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1">Best Trade</p>
                 <p className="text-sm font-semibold">{bestTrade.asset} <span className="text-emerald-400 font-mono">+{formatMoney(bestTrade.pnl)}</span></p>
               </div>
             )}
             {worstTrade ? (
               <div className="glass-card p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Worst Trade</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1">Worst Trade</p>
                 <p className="text-sm font-semibold">{worstTrade.asset} <span className="text-red-400 font-mono">{formatMoney(worstTrade.pnl)}</span></p>
               </div>
             ) : (
               <div className="glass-card p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Worst Trade</p>
+                <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1">Worst Trade</p>
                 <p className="text-sm font-semibold text-emerald-400">No losses yet 🎉</p>
               </div>
             )}
@@ -1420,7 +1421,7 @@ export default function JournalScreen() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-slate-200">Delete Trade?</h3>
-                <p className="text-xs text-slate-500 mt-0.5">This action cannot be undone.</p>
+                <p className="text-xs theme-text-secondary mt-0.5">This action cannot be undone.</p>
               </div>
             </div>
             <div className="p-5">
@@ -1460,12 +1461,12 @@ export default function JournalScreen() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-slate-200">Set Trade Outcome</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{outcomeTrade.asset} • {outcomeTrade.direction === 'buy' ? 'Long' : 'Short'}</p>
+                <p className="text-xs theme-text-secondary mt-0.5">{outcomeTrade.asset} • {outcomeTrade.direction === 'buy' ? 'Long' : 'Short'}</p>
               </div>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 block">Exit Price *</label>
+                <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Exit Price *</label>
                 <input
                   type="number"
                   step="any"
@@ -1477,7 +1478,7 @@ export default function JournalScreen() {
                 />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">Result *</label>
+                <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2 block">Result *</label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => setOutcomeResult('win')}
@@ -1503,9 +1504,9 @@ export default function JournalScreen() {
               </div>
               {outcomeExitPrice && outcomeResult && (
                 <div className="bg-slate-800/50 rounded-xl p-3">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Preview</p>
+                  <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1">Preview</p>
                   <p className="text-sm text-slate-300">
-                    Exit: <span className="font-mono text-slate-200">${Number(outcomeExitPrice).toFixed(4)}</span> •
+                    Exit: <span className="font-mono theme-text-primary">${Number(outcomeExitPrice).toFixed(4)}</span> •
                     Result: <span className={`font-bold ${outcomeResult === 'win' ? 'text-emerald-400' : 'text-red-400'}`}>{outcomeResult}</span>
                   </p>
                   <p className="text-[10px] text-slate-500 mt-1">This action is final — the trade will be marked as closed and cannot be changed.</p>
