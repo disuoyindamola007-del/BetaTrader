@@ -52,32 +52,34 @@ export default function ProfileScreen() {
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in relative">
-      <h1 className="text-xl font-extrabold mb-5">Profile</h1>
+      {/* Sticky top region: header + user card + stats — transparent, theme-aware */}
+      <div className="sticky top-0 z-10 bg-transparent -mx-4 px-4 pb-2">
+        <h1 className="text-xl font-extrabold mb-4 pt-1">Profile</h1>
 
-      {/* Toast feedback for not-yet-built features */}
-      {toast && (
-        <div className="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between gap-3 shadow-lg animate-fade-in">
-          <p className="text-xs text-slate-300">{toast}</p>
-          <button onClick={() => setToast(null)} className="text-slate-500 hover:text-slate-300 shrink-0"><X size={14} /></button>
-        </div>
-      )}
+        {/* Toast feedback for not-yet-built features */}
+        {toast && (
+          <div className="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between gap-3 shadow-lg animate-fade-in">
+            <p className="text-xs text-slate-300">{toast}</p>
+            <button onClick={() => setToast(null)} className="text-slate-500 hover:text-slate-300 shrink-0"><X size={14} /></button>
+          </div>
+        )}
 
-      {/* User Card */}
-      <div className="glass-card p-4 mb-5 flex items-center gap-4">
-        <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-emerald-500/20">
-          {userName?.[0]?.toUpperCase() || 'T'}
-        </div>
-        <div>
-          <p className="font-bold text-lg">{userName}</p>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">Free Plan</span>
-            <span className="text-[10px] bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">Active</span>
+        {/* User Card */}
+        <div className="glass-card p-4 mb-4 flex items-center gap-4">
+          <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-emerald-500/20">
+            {userName?.[0]?.toUpperCase() || 'T'}
+          </div>
+          <div>
+            <p className="font-bold text-lg">{userName}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Free Plan</span>
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">Active</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Stats Row — real, computed from Journal/Alerts data */}
-      <div className="grid grid-cols-3 gap-2 mb-5">
+        {/* Stats Row — real, computed from Journal/Alerts data */}
+        <div className="grid grid-cols-3 gap-2 mb-2">
         <div className="glass-card p-3 text-center">
           <p className="text-lg font-bold">{stats.totalTrades}</p>
           <p className="text-[10px] text-slate-500">Trades</p>
@@ -91,8 +93,9 @@ export default function ProfileScreen() {
           <p className="text-[10px] text-slate-500">Alerts</p>
         </div>
       </div>
+      </div>
 
-      {/* Menu */}
+      {/* Menu — scrolls beneath sticky region */}
       <div className="flex flex-col gap-1">
         {menuItems.map((item, i) => {
           const Icon = item.icon;

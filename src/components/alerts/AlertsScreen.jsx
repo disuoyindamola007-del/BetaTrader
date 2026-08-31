@@ -106,14 +106,17 @@ export default function AlertsScreen() {
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-extrabold">Alerts</h1>
-        <button
-          onClick={handleToggleForm}
-          className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center text-slate-950"
-        >
-          {showForm ? <X size={18} /> : <Plus size={18} />}
-        </button>
+      {/* Sticky header — transparent, theme-aware */}
+      <div className="sticky top-0 z-10 bg-transparent -mx-4 px-4 pb-2">
+        <div className="flex items-center justify-between mb-4 pt-1">
+          <h1 className="text-xl font-extrabold">Alerts</h1>
+          <button
+            onClick={handleToggleForm}
+            className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center text-slate-950"
+          >
+            {showForm ? <X size={18} /> : <Plus size={18} />}
+          </button>
+        </div>
       </div>
 
       {showForm && (
