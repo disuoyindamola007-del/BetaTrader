@@ -136,17 +136,6 @@ export default function HomeScreen() {
           </div>
           <h1 className="text-xl font-extrabold tracking-tight">BetaTrader</h1>
         </div>
-        <div className="flex items-center gap-2">
-          {isLoading && <RefreshCw size={16} className="text-emerald-400 animate-spin" />}
-          {isStale && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Clock size={10} />Stale</span>}
-        </div>
-      </div>
-
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <p className="text-sm text-slate-400">{greeting}, {userName}</p>
-          <p className="text-xs text-slate-500">{session} &bull; {currentTime} UTC</p>
-        </div>
         <button 
           onClick={() => setShowNotifications(true)} 
           className="w-10 h-10 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors relative"
@@ -156,6 +145,11 @@ export default function HomeScreen() {
             <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
           )}
         </button>
+      </div>
+
+      <div className="mb-5">
+        <p className="text-sm text-slate-400">{greeting}, {userName}</p>
+        <p className="text-xs text-slate-500">{session} &bull; {currentTime} UTC</p>
       </div>
 
       <div className="mb-5 bg-gradient-to-br from-emerald-500/8 via-emerald-500/4 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4 glow-emerald">

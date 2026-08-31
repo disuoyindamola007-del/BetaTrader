@@ -174,20 +174,20 @@
   /* ===== NAVIGATION (Floating Capsule) ===== */
   .nav-container {
     position: fixed;
-    bottom: calc(16px + env(safe-area-inset-bottom));
+    bottom: calc(12px + env(safe-area-inset-bottom));
     left: 16px;
     right: 16px;
     z-index: 999;
     background-color: var(--nav-bg);
     border: 1px solid var(--border-color);
     border-radius: 35px;
-    padding: 6px;
+    padding: 4px 6px;
     display: flex;
     justify-content: space-around;
     align-items: center;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
-    height: 66px;
-    gap: 6px;
+    height: 60px;
+    gap: 4px;
   }
 
   .nav-item {
@@ -197,7 +197,7 @@
     align-items: center;
     justify-content: center;
     gap: 2px;
-    padding: 8px 4px;
+    padding: 6px 4px;
     font-size: 10px;
     color: var(--text-secondary);
     border-radius: 20px;
@@ -206,7 +206,6 @@
     background: transparent;
     border: none;
     font-weight: 600;
-    min-height: 52px;
   }
 
   .nav-item:hover {
