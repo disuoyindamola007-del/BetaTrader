@@ -14,8 +14,21 @@ const unsupportedSymbols = new Set(['OIL', 'SILVER']);
 export default function MarketsScreen() {
   const { navigateToAsset, marketSearchRequest, clearMarketSearchRequest } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('All');
+  const [activeCategory, setActiveCategory] = useState(() => {
+    try {
+      return localStorage.getItem('betatrader:activeCategory') || 'All';
+    } catch {
+      return 'All';
+    }
+  });
   const searchInputRef = useRef(null);
+
+  // Persist activeCategory to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('betatrader:activeCategory', activeCategory);
+    } catch { /* ignore */ }
+  }, [activeCategory]);
   const { results: searchResults, isLoading: searchLoading, error: searchError } = useSymbolSearch(searchQuery);
 
   useEffect(() => {
