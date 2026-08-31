@@ -131,6 +131,15 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  /* Small icon buttons override */
+  .glass-card.w-9.h-9,
+  button.glass-card.w-9.h-9 {
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .glass-card-hover {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -187,8 +196,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    padding: 6px 0;
+    gap: 2px;
+    padding: 8px 4px;
     font-size: 10px;
     color: var(--text-secondary);
     border-radius: 20px;
@@ -197,6 +206,7 @@
     background: transparent;
     border: none;
     font-weight: 600;
+    min-height: 52px;
   }
 
   .nav-item:hover {

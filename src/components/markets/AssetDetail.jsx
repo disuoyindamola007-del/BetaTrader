@@ -425,7 +425,7 @@ export default function AssetDetail() {
 
         {/* Actions */}
         <div className="flex gap-2">
-          <button onClick={() => setActiveTab('alerts')} className="flex-1 btn-secondary"><Bell size={16} />Create Alert</button>
+          <button onClick={() => setActiveTab('alerts')} className="flex-1 btn-secondary flex items-center justify-center gap-2"><Bell size={16} />Create Alert</button>
           <button
             onClick={handleAnalyze}
             disabled={isAnalyzing || !hasIndicators || !quote}

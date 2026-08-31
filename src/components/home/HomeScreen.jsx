@@ -5,6 +5,8 @@ import {
   Activity, BookOpen, Bell, BarChart3,
   ChevronRight, Sparkles, RefreshCw, Clock
 } from 'lucide-react';
+import NotificationPanel from '../shared/NotificationPanel.jsx';
+import { useNotifications } from '../../hooks/useNotifications.js';
 import { mockAssets, watchlist, trending } from '../../data/mockData.js';
 import { useNews } from '../../hooks/useNews.js';
 import { useMarketOverview } from '../../hooks/useMarketOverview.js';
@@ -26,6 +28,8 @@ export default function HomeScreen() {
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
+  const [showNotifications, setShowNotifications] = useState(false);
+  const { unreadCount } = useNotifications();
   const homeChartRef = useRef(null);
   const homeChartInstance = useRef(null);
   const homeChartObserver = useRef(null);
@@ -138,9 +142,20 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      <div className="mb-5">
-        <p className="text-sm text-slate-400">{greeting}, {userName}</p>
-        <p className="text-xs text-slate-500">{session} &bull; {currentTime} UTC</p>
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <p className="text-sm text-slate-400">{greeting}, {userName}</p>
+          <p className="text-xs text-slate-500">{session} &bull; {currentTime} UTC</p>
+        </div>
+        <button 
+          onClick={() => setShowNotifications(true)} 
+          className="w-10 h-10 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors relative"
+        >
+          <Bell size={18} className="text-slate-400" />
+          {unreadCount > 0 && (
+            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+          )}
+        </button>
       </div>
 
       <div className="mb-5 bg-gradient-to-br from-emerald-500/8 via-emerald-500/4 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4 glow-emerald">
@@ -307,6 +322,7 @@ export default function HomeScreen() {
         </div>
       </div>
 
+      <NotificationPanel isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
     </div>
   );
 }
