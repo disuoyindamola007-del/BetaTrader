@@ -19,23 +19,21 @@ export default function BottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800/50 safe-area-pb">
-      <div className="flex items-center justify-around px-2 py-1 max-w-lg mx-auto">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => handleTabClick(tab.id)}
-              className={isActive ? 'nav-item-active' : 'nav-item-inactive'}
-            >
-              <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+    <nav className="nav-container safe-area-pb">
+      {tabs.map((tab) => {
+        const Icon = tab.icon;
+        const isActive = activeTab === tab.id;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => handleTabClick(tab.id)}
+            className={isActive ? 'nav-item nav-item-active' : 'nav-item nav-item-inactive'}
+          >
+            <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+            <span>{tab.label}</span>
+          </button>
+        );
+      })}
     </nav>
   );
 }
