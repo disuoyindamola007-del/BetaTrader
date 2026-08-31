@@ -280,7 +280,7 @@ export default function AssetDetail() {
 
   return (
     <div className="animate-slide-up">
-      <div className="sticky top-0 z-10 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50 px-4 py-3">
+      <div className="sticky top-0 z-10 theme-bg-secondary/90 backdrop-blur-xl border-b theme-border px-4 py-3">
         <div className="flex items-center justify-between">
           <button onClick={goBack} className="w-9 h-9 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors"><ArrowLeft size={18} /></button>
           <div className="text-center"><p className="text-sm font-bold">{selectedAsset.symbol}</p><p className="text-[10px] text-slate-500">{selectedAsset.name}</p></div>
@@ -319,7 +319,7 @@ export default function AssetDetail() {
         {/* Timeframes */}
         <div className="flex gap-1.5 mb-4 overflow-x-auto scroll-hide">
           {ALL_TIMEFRAMES.map(tf => (
-            <button key={tf} onClick={() => setTimeframe(tf)} disabled={isLoading} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all disabled:opacity-50 ${timeframe === tf ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800/60 text-slate-400 border border-slate-700/30 hover:text-slate-200'}`}>{tf}</button>
+            <button key={tf} onClick={() => setTimeframe(tf)} disabled={isLoading} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all disabled:opacity-50 ${timeframe === tf ? 'bg-emerald-500 text-slate-950' : 'theme-bg-tertiary text-slate-400 theme-border hover:text-slate-200'}`}>{tf}</button>
           ))}
         </div>
 
@@ -327,13 +327,13 @@ export default function AssetDetail() {
         <div className="glass-card p-2 mb-5 relative" style={{ minHeight: '360px' }}>
           <div ref={chartContainerRef} style={{ width: '100%', height: '360px', position: 'relative' }} />
           {isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg z-10">
+            <div className="absolute inset-0 flex flex-col items-center justify-center theme-bg-primary/60 rounded-lg z-10">
               <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-2" />
               <p className="text-xs text-slate-500">Loading chart...</p>
             </div>
           )}
           {chartError && !isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg z-10 px-6">
+            <div className="absolute inset-0 flex flex-col items-center justify-center theme-bg-primary/60 rounded-lg z-10 px-6">
               {isUnavailable ? (
                 <>
                   <AlertTriangle size={24} className="text-amber-400 mb-2" />

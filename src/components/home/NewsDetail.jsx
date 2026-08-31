@@ -34,7 +34,7 @@ export default function NewsDetail({ article }) {
 
   return (
     <div className="animate-slide-up">
-      <div className="sticky top-0 z-10 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50 px-4 py-3">
+      <div className="sticky top-0 z-10 theme-bg-secondary/90 backdrop-blur-xl border-b theme-border px-4 py-3">
         <button onClick={goBack} className="w-9 h-9 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors" aria-label="Back"><ArrowLeft size={18} /></button>
       </div>
       <article className="px-4 pt-5 pb-8">

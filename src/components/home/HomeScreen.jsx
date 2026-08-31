@@ -5,7 +5,6 @@ import {
   Activity, BookOpen, Bell, BarChart3,
   ChevronRight, Sparkles, RefreshCw, Clock
 } from 'lucide-react';
-import NotificationPanel from '../shared/NotificationPanel.jsx';
 import { useNotifications } from '../../hooks/useNotifications.js';
 import { mockAssets, watchlist, trending } from '../../data/mockData.js';
 import { useNews } from '../../hooks/useNews.js';
@@ -16,8 +15,8 @@ import PriceChange from '../shared/PriceChange.jsx';
 import { SkeletonCard, SkeletonMetric, SkeletonNews, SkeletonText } from '../shared/Skeleton.jsx';
 
 export default function HomeScreen() {
-  const { navigateToAsset, navigateToNews, navigateToPulseMetric, setActiveTab, openMarketSearch, userName } = useApp();
-  const { news: liveNews, isLoading: newsLoading, error: newsError, errorType: newsErrorType } = useNews();
+  const { navigateToAsset, navigateToNews, navigateToPulseMetric, setActiveTab, openMarketSearch, userName, timezone } = useApp();
+  const { news: liveNews, isLoading: newsLoading, error: newsError, errorType: newsErrorType, reload: reloadNews } = useNews();
   const {
     pulse: livePulse, briefing: liveBriefing, briefingGeneratedAt,
     pulseLoading, briefingLoading, pulseError, briefingError,
@@ -28,11 +27,23 @@ export default function HomeScreen() {
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [session, setSession] = useState('');
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [timezoneLabel, setTimezoneLabel] = useState('UTC');
   const { unreadCount } = useNotifications();
   const homeChartRef = useRef(null);
   const homeChartInstance = useRef(null);
   const homeChartObserver = useRef(null);
+
+  // Get friendly timezone abbreviation
+  const getTimezoneLabel = (tz) => {
+    try {
+      const now = new Date();
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' }).formatToParts(now);
+      const tzPart = parts.find(p => p.type === 'timeZoneName');
+      return tzPart ? tzPart.value : tz;
+    } catch {
+      return tz;
+    }
+  };
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -42,7 +53,12 @@ export default function HomeScreen() {
 
     const updateTime = () => {
       const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }));
+      // Use selected timezone for time display
+      const tzTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: timezone });
+      setCurrentTime(tzTime);
+      setTimezoneLabel(getTimezoneLabel(timezone));
+
+      // Market session based on UTC hour
       const h = now.getUTCHours();
       if (h >= 0 && h < 8) setSession('Sydney Session');
       else if (h >= 8 && h < 16) setSession('London Session');
@@ -51,7 +67,7 @@ export default function HomeScreen() {
     updateTime();
     const interval = setInterval(updateTime, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [timezone]);
 
   const { data: cryptoData, isLoading: cryptoLoading, isStale: cryptoStale } = useCryptoBatch(true);
   const { data: btcCandles, error: chartError } = useCandles('BTC', '1h', { enabled: true, limit: 100 });
@@ -135,27 +151,30 @@ export default function HomeScreen() {
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Sparkles size={20} className="text-white" />
+      {/* Sticky Home header — transparent, theme-aware */}
+      <div className="sticky top-0 z-10 bg-transparent -mx-4 px-4 pb-2">
+        <div className="flex items-center justify-between mb-4 pt-1">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Sparkles size={20} className="text-white" />
+            </div>
+            <h1 className="text-xl font-extrabold tracking-tight">BetaTrader</h1>
           </div>
-          <h1 className="text-xl font-extrabold tracking-tight">BetaTrader</h1>
+          <button
+            onClick={() => setActiveTab('notifications')} 
+            className="w-10 h-10 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors relative"
+          >
+            <Bell size={18} className="text-slate-400" />
+            {unreadCount > 0 && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+            )}
+          </button>
         </div>
-        <button 
-          onClick={() => setShowNotifications(true)} 
-          className="w-10 h-10 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors relative"
-        >
-          <Bell size={18} className="text-slate-400" />
-          {unreadCount > 0 && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
-          )}
-        </button>
-      </div>
 
-      <div className="mb-5">
-        <p className="text-sm theme-text-secondary">{greeting}, {userName}</p>
-        <p className="text-xs theme-text-secondary">{session} &bull; {currentTime} UTC</p>
+        <div className="mb-3">
+          <p className="text-sm theme-text-secondary">{greeting}, {userName}</p>
+          <p className="text-xs theme-text-secondary">{session} &bull; {currentTime} {timezoneLabel}</p>
+        </div>
       </div>
 
       <div className="mb-5 bg-gradient-to-br from-emerald-500/8 via-emerald-500/4 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4 glow-emerald">
@@ -236,7 +255,7 @@ export default function HomeScreen() {
         </div>
         <div className="glass-card p-2 relative" style={{ minHeight: '180px' }}>
           <div ref={homeChartRef} style={{ width: '100%', height: '180px', position: 'relative' }} />
-          {chartError && <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 rounded-lg"><p className="text-xs text-red-400">{chartError}</p></div>}
+          {chartError && <div className="absolute inset-0 flex flex-col items-center justify-center theme-bg-primary/60 rounded-lg"><p className="text-xs text-red-400">{chartError}</p></div>}
         </div>
       </div>
 
@@ -289,7 +308,7 @@ export default function HomeScreen() {
           {!newsLoading && newsError && (
             <div className="glass-card p-4 text-center">
               <p className="text-sm text-amber-400 mb-2">{newsErrorType === 'rate_limited' ? '⚠️ Rate limited — please retry shortly.' : newsError}</p>
-              <button onClick={reload} className="text-xs text-emerald-400">Try Again</button>
+              <button onClick={reloadNews} className="text-xs text-emerald-400">Try Again</button>
             </div>
           )}
           {!newsLoading && !newsError && displayedNews.slice(0, 3).map((news) => (
@@ -322,7 +341,6 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      <NotificationPanel isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
     </div>
   );
 }

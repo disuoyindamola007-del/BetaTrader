@@ -282,7 +282,7 @@ export default function AlertsScreen() {
       {/* Delete confirmation modal */}
       {deleteConfirmAlert && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirmAlert(null)}>
-          <div className="bg-slate-900 w-full sm:w-[400px] rounded-2xl border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="theme-bg-secondary w-full sm:w-[400px] rounded-2xl border theme-border shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-slate-700 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
                 <Trash2 size={20} className="text-red-400" />

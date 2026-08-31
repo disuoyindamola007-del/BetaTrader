@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
-import { User, Moon, Bell, Shield, HelpCircle, LogOut, ChevronRight, Wallet, X } from 'lucide-react';
+import { User, Moon, Bell, Shield, HelpCircle, LogOut, ChevronRight, Wallet, X, Globe } from 'lucide-react';
 import { useApp } from '../../AppContext.jsx';
 import { getTrades } from '../../services/journalService.js';
 import { getAlerts } from '../../services/alertsService.js';
-import { requestNotificationPermission } from '../../services/settingsService.js';
+import { requestNotificationPermission, TIMEZONE_OPTIONS } from '../../services/settingsService.js';
 
 export default function ProfileScreen() {
-  const { darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, userName } = useApp();
+  const { darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, userName, timezone, setTimezone } = useApp();
   const [toast, setToast] = useState(null);
 
   // Real stats — computed live from actual persisted journal/alerts data,
@@ -45,7 +45,11 @@ export default function ProfileScreen() {
     { icon: User, label: 'Personal Information', action: () => showComingSoon('Personal Information') },
     { icon: Wallet, label: 'Subscription', badge: 'Free', action: () => showComingSoon('Subscription management') },
     { icon: Bell, label: 'Notifications', toggle: true, value: notificationsEnabled, action: handleNotificationsToggle },
-    { icon: Moon, label: 'Dark Mode', toggle: true, value: darkMode, action: () => setDarkMode(!darkMode), note: 'Theme switching coming soon' },
+    { icon: Moon, label: darkMode ? 'Dark Mode' : 'Light Mode', toggle: true, value: darkMode, action: () => setDarkMode(!darkMode) },
+    { icon: Globe, label: 'Time Zone', value: timezone, action: () => {
+      const nextIdx = (TIMEZONE_OPTIONS.findIndex(t => t.value === timezone) + 1) % TIMEZONE_OPTIONS.length;
+      setTimezone(TIMEZONE_OPTIONS[nextIdx].value);
+    }, note: `Current: ${TIMEZONE_OPTIONS.find(t => t.value === timezone)?.label || timezone}` },
     { icon: Shield, label: 'Security', action: () => showComingSoon('Security settings') },
     { icon: HelpCircle, label: 'Help & Support', action: () => showComingSoon('Help & Support') },
   ];
@@ -126,7 +130,12 @@ export default function ProfileScreen() {
                   }`} />
                 </div>
               ) : (
-                <ChevronRight size={16} className="text-slate-600 shrink-0" />
+                <div className="flex items-center gap-2 shrink-0">
+                  {item.value && typeof item.value === 'string' && !item.toggle && (
+                    <span className="text-[10px] text-slate-500 max-w-[100px] truncate">{item.value}</span>
+                  )}
+                  <ChevronRight size={16} className="text-slate-600 shrink-0" />
+                </div>
               )}
             </button>
           );

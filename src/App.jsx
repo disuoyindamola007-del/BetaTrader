@@ -5,6 +5,7 @@ import HomeScreen from './components/home/HomeScreen.jsx';
 import NewsScreen from './components/home/NewsScreen.jsx';
 import NewsDetail from './components/home/NewsDetail.jsx';
 import MarketPulseDetail from './components/home/MarketPulseDetail.jsx';
+import NotificationsScreen from './components/home/NotificationsScreen.jsx';
 import MarketsScreen from './components/markets/MarketsScreen.jsx';
 import AssetDetail from './components/markets/AssetDetail.jsx';
 import JournalScreen from './components/journal/JournalScreen.jsx';
@@ -34,6 +35,7 @@ function AppContent() {
       return <HomeScreen />;
     }
     if (activeTab === 'news') return <NewsScreen />;
+    if (activeTab === 'notifications') return <NotificationsScreen />;
     if (activeTab === 'markets') {
       return selectedAsset ? <AssetDetail /> : <MarketsScreen />;
     }

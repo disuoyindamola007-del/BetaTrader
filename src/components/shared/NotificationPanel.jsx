@@ -17,7 +17,7 @@ export default function NotificationPanel({ isOpen, onClose }) {
         onClick={onClose}
       />
       <div 
-        className="relative w-full max-w-md glass-card bg-slate-900/95 border border-slate-700/50 rounded-2xl shadow-2xl max-h-[80vh] flex flex-col animate-scale-in"
+        className="relative w-full max-w-md glass-card theme-bg-secondary/95 border theme-border rounded-2xl shadow-2xl max-h-[80vh] flex flex-col animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

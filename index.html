@@ -7,6 +7,27 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>BetaTrader</title>
+    <script>
+      // Apply persisted theme before first paint to prevent flicker
+      (function() {
+        try {
+          var raw = localStorage.getItem('betatrader:settings:v1');
+          if (raw) {
+            var settings = JSON.parse(raw);
+            var darkMode = settings.darkMode !== undefined ? settings.darkMode : true;
+            document.documentElement.classList.add(darkMode ? 'dark' : 'light');
+            document.documentElement.classList.remove(darkMode ? 'light' : 'dark');
+            var metaThemeColor = document.querySelector('meta[name=theme-color]');
+            if (metaThemeColor) {
+              metaThemeColor.setAttribute('content', darkMode ? '#0f172a' : '#f8fafc');
+            }
+            return;
+          }
+        } catch(e) {}
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">

@@ -118,6 +118,8 @@ export function AppProvider({ children }) {
   const setDarkMode = (value) => setSettings(updateSetting('darkMode', value));
   const notificationsEnabled = settings.notificationsEnabled;
   const setNotificationsEnabled = (value) => setSettings(updateSetting('notificationsEnabled', value));
+  const timezone = settings.timezone || 'UTC';
+  const setTimezone = (value) => setSettings(updateSetting('timezone', value));
 
   // Favorites/watchlist — persisted per device. No dedicated "My Favorites"
   // screen yet; this just makes the heart button on Asset Detail real.
@@ -173,6 +175,7 @@ export function AppProvider({ children }) {
     journalView, setJournalView,
     darkMode, setDarkMode,
     notificationsEnabled, setNotificationsEnabled,
+    timezone, setTimezone,
     favorites, toggleFavorite, isFavorite,
     userName, setUserName,
   };

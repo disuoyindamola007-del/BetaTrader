@@ -7,7 +7,20 @@ const STORAGE_KEY = 'betatrader:settings:v1';
 const DEFAULTS = {
   notificationsEnabled: true,
   darkMode: true,
+  timezone: 'UTC',
 };
+
+export const TIMEZONE_OPTIONS = [
+  { value: 'UTC', label: 'UTC' },
+  { value: 'Africa/Lagos', label: 'West Africa Time (WAT)' },
+  { value: 'Europe/London', label: 'London (BST/GMT)' },
+  { value: 'Europe/Berlin', label: 'Central Europe (CET)' },
+  { value: 'America/New_York', label: 'New York (EST/EDT)' },
+  { value: 'America/Chicago', label: 'Chicago (CST/CDT)' },
+  { value: 'Asia/Tokyo', label: 'Tokyo (JST)' },
+  { value: 'Asia/Shanghai', label: 'Shanghai (CST)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEST/AEDT)' },
+];
 
 function loadSettings() {
   try {

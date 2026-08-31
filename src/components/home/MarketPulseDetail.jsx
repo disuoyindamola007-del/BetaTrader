@@ -42,7 +42,7 @@ export default function MarketPulseDetail({ metric }) {
 
   return (
     <div className="animate-slide-up">
-      <div className="sticky top-0 z-10 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/50 px-4 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 theme-bg-secondary/90 backdrop-blur-xl border-b theme-border px-4 py-3 flex items-center gap-3">
         <button onClick={goBack} className="w-9 h-9 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors" aria-label="Back"><ArrowLeft size={18} /></button>
         <span className="text-sm font-bold text-slate-200">Market Pulse</span>
       </div>
