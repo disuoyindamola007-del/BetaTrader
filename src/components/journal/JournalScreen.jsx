@@ -15,7 +15,7 @@ const STRATEGIES = ['Breakout', 'Trend Following', 'Reversal', 'Range Trading', 
 const BIAS_OPTIONS = [
   { value: 'Bullish', icon: ArrowUp, color: 'text-emerald-400' },
   { value: 'Bearish', icon: ArrowDown, color: 'text-red-400' },
-  { value: 'Neutral', icon: Minus, color: 'text-slate-400' },
+  { value: 'Neutral', icon: Minus, color: 'theme-text-secondary' },
 ];
 
 const STRATEGY_ICONS = {
@@ -544,7 +544,7 @@ export default function JournalScreen() {
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === tab.id ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'
+                  activeTab === tab.id ? 'text-emerald-400' : 'theme-text-secondary hover:theme-text-primary'
                 }`}
                 style={activeTab === tab.id ? { backgroundColor: 'var(--bg-secondary)' } : {}}
               >
@@ -644,11 +644,11 @@ export default function JournalScreen() {
                         }`}>
                           {trade.direction}
                         </span>
-                        <span className="text-[10px] text-slate-500">{trade.timeframe}</span>
+                        <span className="theme-text-secondary">{trade.timeframe}</span>
                         {trade.status === 'open' ? (
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20">Open</span>
                         ) : (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-500/15 text-slate-400 border border-slate-500/20">Closed</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase theme-bg-tertiary theme-text-muted theme-border">Closed</span>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
@@ -700,7 +700,7 @@ export default function JournalScreen() {
                   {selectedTrade.status === 'open' ? (
                     <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20">Open</span>
                   ) : (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase bg-slate-500/15 text-slate-400 border border-slate-500/20">Closed</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase theme-bg-tertiary theme-text-muted theme-border">Closed</span>
                   )}
                 </div>
                 {selectedTrade.status === 'closed' ? (
@@ -714,7 +714,7 @@ export default function JournalScreen() {
               <div className="flex items-center gap-4 text-xs theme-text-secondary flex-wrap">
                 <span className="flex items-center gap-1"><Calendar size={12} /> {selectedTrade.date}</span>
                 <span className="flex items-center gap-1"><Clock size={12} /> {selectedTrade.timeframe}</span>
-                {selectedTrade.assetClass && <span className="capitalize bg-slate-800 px-2 py-0.5 rounded">{selectedTrade.assetClass}</span>}
+                {selectedTrade.assetClass && <span className="capitalize theme-bg-secondary px-2 py-0.5 rounded">{selectedTrade.assetClass}</span>}
               </div>
             </div>
 
@@ -793,7 +793,8 @@ export default function JournalScreen() {
                 <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Result</p>
                 <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
                   selectedTrade.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
-                  selectedTrade.result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
+                  selectedTrade.result === 'loss' ? 'bg-red-500/15 text-red-400' :
+                  'theme-bg-tertiary theme-text-muted'
                 }`}>
                   {selectedTrade.result}
                 </span>
@@ -806,20 +807,20 @@ export default function JournalScreen() {
                 <p className="text-[10px] theme-text-secondary uppercase tracking-wider">Review</p>
                 {selectedTrade.bias && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Bias</span>
-                    <span className="text-slate-200">{selectedTrade.bias}</span>
+                    <span className="theme-text-secondary">Bias</span>
+                    <span className="theme-text-primary">{selectedTrade.bias}</span>
                   </div>
                 )}
                 {selectedTrade.emotion && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Emotion</span>
-                    <span className="text-slate-200 capitalize">{selectedTrade.emotion}</span>
+                    <span className="theme-text-secondary">Emotion</span>
+                    <span className="theme-text-primary capitalize">{selectedTrade.emotion}</span>
                   </div>
                 )}
                 {selectedTrade.strategy && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Strategy</span>
-                    <span className="text-slate-200 capitalize">{selectedTrade.strategy}</span>
+                    <span className="theme-text-secondary">Strategy</span>
+                    <span className="theme-text-primary capitalize">{selectedTrade.strategy}</span>
                   </div>
                 )}
               </div>
@@ -829,7 +830,7 @@ export default function JournalScreen() {
             {selectedTrade.notes && (
               <div className="glass-card p-4">
                 <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Notes</p>
-                <p className="text-sm text-slate-300">{selectedTrade.notes}</p>
+                <p className="text-sm theme-text-primary">{selectedTrade.notes}</p>
               </div>
             )}
 
@@ -851,7 +852,7 @@ export default function JournalScreen() {
               ) : (
                 <button
                   onClick={() => setSelectedTrade(null)}
-                  className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold theme-bg-secondary theme-text-primary hover:theme-bg-tertiary transition-colors"
                 >
                   Back
                 </button>
@@ -869,11 +870,12 @@ export default function JournalScreen() {
               <div key={step} className="flex items-center gap-2">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
                   logStep === step ? 'bg-emerald-500 text-slate-950' :
-                  logStep > step ? 'bg-emerald-500/30 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                  logStep > step ? 'bg-emerald-500/30 text-emerald-400' :
+                  'theme-bg-secondary theme-text-secondary'
                 }`}>
                   {logStep > step ? '✓' : step}
                 </div>
-                {step < 3 && <div className={`w-8 h-0.5 ${logStep > step ? 'bg-emerald-500/30' : 'bg-slate-800'}`} />}
+                {step < 3 && <div className={`w-8 h-0.5 ${logStep > step ? 'theme-bg-secondary' : 'bg-slate-700'}`} />}
               </div>
             ))}
           </div>
@@ -881,7 +883,7 @@ export default function JournalScreen() {
           {/* STEP 1 */}
           {logStep === 1 && (
             <div className="flex flex-col gap-5">
-              <p className="text-sm font-semibold text-slate-300">Step 1: Setup</p>
+              <p className="text-sm font-semibold theme-text-primary">Step 1: Setup</p>
 
               {/* Asset Search */}
               <div>
@@ -909,12 +911,12 @@ export default function JournalScreen() {
                     className="w-full input-field pr-8"
                   />
                   {searchQuery && (
-                    <button onClick={() => { setSearchQuery(''); setShowSearchResults(false); updateField('assetSymbol', ''); updateField('assetName', ''); updateField('assetClass', ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                    <button onClick={() => { setSearchQuery(''); setShowSearchResults(false); updateField('assetSymbol', ''); updateField('assetName', ''); updateField('assetClass', ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 theme-text-secondary hover:theme-text-primary">
                       <X size={14} />
                     </button>
                   )}
                   {showSearchResults && searchQuery.trim() && (
-                    <div className="absolute z-50 w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                    <div className="absolute z-50 w-full mt-1 theme-bg-secondary theme-border rounded-xl shadow-xl max-h-60 overflow-y-auto">
                       {searchLoading && <div className="p-3 text-xs theme-text-secondary text-center">Searching...</div>}
                       {!searchLoading && searchResults.length === 0 && (
                         <div className="p-3 text-xs theme-text-secondary text-center">No results — you can still log it manually.</div>
@@ -923,13 +925,13 @@ export default function JournalScreen() {
                         <button
                           key={`${result.source}:${result.symbol}`}
                           onClick={() => selectSearchResult(result)}
-                          className="w-full text-left p-3 flex items-center justify-between hover:bg-slate-800 transition-colors border-b border-slate-800/50 last:border-0"
+                          className="w-full text-left p-3 flex items-center justify-between hover:theme-bg-tertiary transition-colors theme-border last:border-0"
                         >
                           <div>
-                            <span className="text-sm font-semibold text-slate-200">{result.symbol}</span>
+                            <span className="text-sm font-semibold theme-text-primary">{result.symbol}</span>
                             <span className="text-xs theme-text-secondary ml-2">{result.name}</span>
                           </div>
-                          <span className="text-[10px] text-slate-600 uppercase bg-slate-800 px-2 py-0.5 rounded">{result.category}</span>
+                          <span className="text-[10px] text-slate-600 uppercase theme-bg-secondary px-2 py-0.5 rounded">{result.category}</span>
                         </button>
                       ))}
                     </div>
@@ -937,7 +939,7 @@ export default function JournalScreen() {
                 </div>
                 {formErrors.step1.asset && <p className="text-xs text-red-400 mt-1">{formErrors.step1.asset}</p>}
                 {form.assetSymbol && !form.assetName && (
-                  <p className="text-[10px] text-slate-400 mt-1">Manual entry — asset type will default to forex</p>
+                  <p className="theme-text-secondary mt-1">Manual entry — asset type will default to forex</p>
                 )}
               </div>
 
@@ -950,7 +952,7 @@ export default function JournalScreen() {
                     className={`py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
                       form.direction === 'buy'
                         ? 'bg-emerald-500 text-slate-950'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                        : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                     }`}
                   >
                     <TrendingUp size={16} /> Buy / Long
@@ -960,7 +962,7 @@ export default function JournalScreen() {
                     className={`py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
                       form.direction === 'sell'
                         ? 'bg-red-500 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                        : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                     }`}
                   >
                     <TrendingDown size={16} /> Sell / Short
@@ -980,7 +982,7 @@ export default function JournalScreen() {
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                         form.timeframe === tf
                           ? 'bg-emerald-500 text-slate-950'
-                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                          : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                       }`}
                     >
                       {tf}
@@ -991,7 +993,7 @@ export default function JournalScreen() {
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       form.timeframe === 'custom'
                         ? 'bg-emerald-500 text-slate-950'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                        : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                     }`}
                   >
                     Custom
@@ -1016,18 +1018,18 @@ export default function JournalScreen() {
           {/* STEP 2 */}
           {logStep === 2 && (
             <div className="flex flex-col gap-5">
-              <p className="text-sm font-semibold text-slate-300">Step 2: Entry & Exit</p>
+              <p className="text-sm font-semibold theme-text-primary">Step 2: Entry & Exit</p>
 
               {/* Status Toggle */}
               <div>
                 <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Trade Status</label>
-                <div className="flex gap-1 bg-slate-800 p-1 rounded-xl">
+                <div className="flex gap-1 theme-bg-secondary p-1 rounded-xl">
                   <button
                     onClick={() => { updateField('status', 'closed'); updateField('exit', ''); updateField('stopLoss', ''); updateField('takeProfit', ''); }}
                     className={`flex-1 py-2.5 rounded-lg text-xs font-semibold transition-all ${
                       form.status === 'closed'
                         ? 'bg-emerald-500 text-slate-950'
-                        : 'text-slate-400 hover:text-slate-300'
+                        : 'theme-text-secondary hover:theme-text-primary'
                     }`}
                   >
                     Closed
@@ -1037,7 +1039,7 @@ export default function JournalScreen() {
                     className={`flex-1 py-2.5 rounded-lg text-xs font-semibold transition-all ${
                       form.status === 'open'
                         ? 'bg-amber-500 text-slate-950'
-                        : 'text-slate-400 hover:text-slate-300'
+                        : 'theme-text-secondary hover:theme-text-primary'
                     }`}
                   >
                     Open
@@ -1097,7 +1099,7 @@ export default function JournalScreen() {
               {fieldConfig.usesPips && (
                 <div>
                   <label className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1 block">Lot Type</label>
-                  <div className="flex gap-1 bg-slate-800 p-1 rounded-xl">
+                  <div className="flex gap-1 theme-bg-secondary p-1 rounded-xl">
                     {['standard', 'mini', 'micro'].map(type => (
                       <button
                         key={type}
@@ -1105,14 +1107,14 @@ export default function JournalScreen() {
                         className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${
                           form.lotType === type
                             ? 'bg-emerald-500 text-slate-950'
-                            : 'text-slate-400 hover:text-slate-300'
+                            : 'theme-text-secondary hover:theme-text-primary'
                         }`}
                       >
                         {type}
                       </button>
                     ))}
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1">Standard = $10/pip, Mini = $1/pip, Micro = $0.10/pip</p>
+                  <p className="theme-text-secondary mt-1">Standard = $10/pip, Mini = $1/pip, Micro = $0.10/pip</p>
                 </div>
               )}
 
@@ -1126,7 +1128,7 @@ export default function JournalScreen() {
                     onChange={e => updateField('leverage', e.target.value)}
                     className="w-full input-field"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">e.g. 10, 20, 50, 100</p>
+                  <p className="theme-text-secondary mt-1">e.g. 10, 20, 50, 100</p>
                 </div>
               )}
 
@@ -1166,7 +1168,7 @@ export default function JournalScreen() {
                   <p className="text-sm font-mono text-amber-400">
                     ${calcLiquidationPrice(Number(form.entry), Number(form.leverage), form.direction)?.toFixed(4)}
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-1">
+                  <p className="theme-text-secondary mt-1">
                     At {form.leverage}x leverage on {form.direction === 'buy' ? 'long' : 'short'}
                   </p>
                 </div>
@@ -1197,11 +1199,11 @@ export default function JournalScreen() {
             const result = isClosed ? deriveResult(closedPnl) : null;
             return (
               <div className="flex flex-col gap-5">
-                <p className="text-sm font-semibold text-slate-300">Step 3: Result & Review</p>
+                <p className="text-sm font-semibold theme-text-primary">Step 3: Result & Review</p>
 
                 {isClosed ? (
                   // Closed trade: realized P/L
-                  <div className="glass-card bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                  <div className="glass-card p-4 rounded-xl theme-border">
                     <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Realized P/L</p>
                     <div className="flex items-center justify-between">
                       <div>
@@ -1215,7 +1217,8 @@ export default function JournalScreen() {
                       </div>
                       <span className={`text-sm font-bold px-3 py-1 rounded-full uppercase ${
                         result === 'win' ? 'bg-emerald-500/15 text-emerald-400' :
-                        result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-slate-500/15 text-slate-400'
+                        result === 'loss' ? 'bg-red-500/15 text-red-400' :
+                        'theme-bg-tertiary theme-text-muted'
                       }`}>
                         {result}
                       </span>
@@ -1223,7 +1226,7 @@ export default function JournalScreen() {
                   </div>
                 ) : (
                   // Open trade: projected outcomes
-                  <div className="glass-card bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                  <div className="glass-card p-4 rounded-xl theme-border">
                     <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Projected Outcomes</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -1263,7 +1266,7 @@ export default function JournalScreen() {
                           className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-semibold transition-all ${
                             form.bias === opt.value
                               ? 'bg-emerald-500 text-slate-950'
-                              : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                              : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                           }`}
                         >
                           <Icon size={18} className={opt.color} />
@@ -1287,7 +1290,7 @@ export default function JournalScreen() {
                           className={`flex items-center gap-2 py-3 px-3 rounded-xl text-sm font-semibold transition-all ${
                             form.emotion === opt.value
                               ? 'bg-emerald-500 text-slate-950'
-                              : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                              : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                           }`}
                         >
                           <Icon size={16} className={opt.color} />
@@ -1311,10 +1314,10 @@ export default function JournalScreen() {
                           className={`flex items-center gap-2 py-3 px-3 rounded-xl text-sm font-semibold transition-all ${
                             form.strategy === s
                               ? 'bg-emerald-500 text-slate-950'
-                              : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                              : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                           }`}
                         >
-                          <Icon size={16} className="text-slate-400" />
+                          <Icon size={16} className="theme-text-secondary" />
                           {s}
                         </button>
                       );
@@ -1362,7 +1365,7 @@ export default function JournalScreen() {
               <div className="glass-card p-3 border border-amber-500/20 bg-amber-500/5">
                 <p className="text-[10px] text-amber-500 uppercase tracking-wider mb-1">Open Positions</p>
                 <p className="text-lg font-bold font-mono text-amber-400">{openTrades.length}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Not included in stats below until closed</p>
+                <p className="text-[10px] theme-text-secondary mt-0.5">Not included in stats below until closed</p>
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
@@ -1385,7 +1388,7 @@ export default function JournalScreen() {
                 {losingTrades.length > 0 ? (
                   <p className="text-lg font-bold font-mono text-red-400">{avgLoss < 0 ? formatMoney(avgLoss) : 'No losses'}</p>
                 ) : (
-                  <p className="text-lg font-bold font-mono text-slate-500">No losses</p>
+                  <p className="theme-text-muted">No losses</p>
                 )}
               </div>
             </div>
@@ -1413,20 +1416,20 @@ export default function JournalScreen() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmTrade && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirmTrade(null)}>
-          <div className="bg-slate-900 w-full sm:w-[400px] rounded-2xl border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center transparent" onClick={() => setDeleteConfirmTrade(null)}>
+          <div className="theme-bg-secondary w-full sm:w-[400px] rounded-2xl theme-border shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-slate-700 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
                 <Trash2 size={20} className="text-red-400" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-slate-200">Delete Trade?</h3>
+                <h3 className="theme-text-primary">Delete Trade?</h3>
                 <p className="text-xs theme-text-secondary mt-0.5">This action cannot be undone.</p>
               </div>
             </div>
             <div className="p-5">
-              <p className="text-sm text-slate-300">
-                Are you sure you want to delete the trade for <span className="font-semibold text-slate-200">{deleteConfirmTrade.asset}</span>
+              <p className="theme-text-primary">
+                Are you sure you want to delete the trade for <span className="font-semibold theme-text-primary">{deleteConfirmTrade.asset}</span>
                 {' '}({deleteConfirmTrade.date}) with P&L of{' '}
                 <span className={`font-mono font-semibold ${deleteConfirmTrade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   {deleteConfirmTrade.pnl >= 0 ? '+' : ''}{formatMoney(deleteConfirmTrade.pnl)}
@@ -1436,7 +1439,7 @@ export default function JournalScreen() {
             <div className="flex gap-2 p-4 border-t border-slate-700">
               <button
                 onClick={() => setDeleteConfirmTrade(null)}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                className="flex-1 py-3 rounded-xl text-sm font-semibold theme-bg-secondary theme-text-primary hover:theme-bg-tertiary transition-colors"
               >
                 Cancel
               </button>
@@ -1453,14 +1456,14 @@ export default function JournalScreen() {
 
       {/* Set Outcome Modal */}
       {showOutcomeModal && outcomeTrade && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowOutcomeModal(false)}>
-          <div className="bg-slate-900 w-full sm:w-[440px] rounded-2xl border border-slate-700 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center transparent" onClick={() => setShowOutcomeModal(false)}>
+          <div className="theme-bg-secondary w-full sm:w-[440px] rounded-2xl theme-border shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-slate-700 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
                 <TrendingUp size={20} className="text-emerald-400" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-slate-200">Set Trade Outcome</h3>
+                <h3 className="theme-text-primary">Set Trade Outcome</h3>
                 <p className="text-xs theme-text-secondary mt-0.5">{outcomeTrade.asset} • {outcomeTrade.direction === 'buy' ? 'Long' : 'Short'}</p>
               </div>
             </div>
@@ -1485,7 +1488,7 @@ export default function JournalScreen() {
                     className={`py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
                       outcomeResult === 'win'
                         ? 'bg-emerald-500 text-slate-950'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                        : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                     }`}
                   >
                     <TrendingUp size={16} /> Win
@@ -1495,7 +1498,7 @@ export default function JournalScreen() {
                     className={`py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
                       outcomeResult === 'loss'
                         ? 'bg-red-500 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+                        : 'theme-bg-secondary theme-text-secondary hover:theme-bg-tertiary theme-border'
                     }`}
                   >
                     <TrendingDown size={16} /> Loss
@@ -1503,20 +1506,20 @@ export default function JournalScreen() {
                 </div>
               </div>
               {outcomeExitPrice && outcomeResult && (
-                <div className="bg-slate-800/50 rounded-xl p-3">
+                <div className="theme-bg-secondary rounded-xl p-3">
                   <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-1">Preview</p>
-                  <p className="text-sm text-slate-300">
+                  <p className="theme-text-primary">
                     Exit: <span className="font-mono theme-text-primary">${Number(outcomeExitPrice).toFixed(4)}</span> •
                     Result: <span className={`font-bold ${outcomeResult === 'win' ? 'text-emerald-400' : 'text-red-400'}`}>{outcomeResult}</span>
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-1">This action is final — the trade will be marked as closed and cannot be changed.</p>
+                  <p className="theme-text-secondary mt-1">This action is final — the trade will be marked as closed and cannot be changed.</p>
                 </div>
               )}
             </div>
             <div className="flex gap-2 p-4 border-t border-slate-700">
               <button
                 onClick={() => setShowOutcomeModal(false)}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                className="flex-1 py-3 rounded-xl text-sm font-semibold theme-bg-secondary theme-text-primary hover:theme-bg-tertiary transition-colors"
               >
                 Cancel
               </button>
