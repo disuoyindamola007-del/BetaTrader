@@ -181,12 +181,11 @@
     background-color: var(--nav-bg);
     border: 1px solid var(--border-color);
     border-radius: 35px;
-    padding: 4px 6px;
+    padding: 8px 6px;
     display: flex;
     justify-content: space-around;
     align-items: center;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
-    height: 60px;
     gap: 4px;
   }
 
@@ -196,8 +195,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    padding: 6px 4px;
+    gap: 3px;
+    padding: 4px;
     font-size: 10px;
     color: var(--text-secondary);
     border-radius: 20px;

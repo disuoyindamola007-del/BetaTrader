@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, X, ExternalLink, Check, CheckCheck, Clock } from 'lucide-react';
+import { Bell, X, ExternalLink, Check, CheckCheck, Clock, TrendingUp, AlertCircle, Info } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications.js';
 
 export default function NotificationPanel({ isOpen, onClose }) {
@@ -75,7 +75,15 @@ export default function NotificationPanel({ isOpen, onClose }) {
               className={`w-full text-left p-3 border-b border-slate-800/50 transition-colors ${notification.read ? 'opacity-60' : 'bg-slate-800/30'}`}
             >
               <div className="flex items-start gap-3">
-                <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${notification.read ? 'bg-slate-600' : 'bg-emerald-400'}`} />
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--bg-tertiary)' }}>
+                  {notification.type === 'alert' ? (
+                    <AlertCircle size={14} className="text-amber-400" />
+                  ) : notification.type === 'system' ? (
+                    <Info size={14} className="text-blue-400" />
+                  ) : (
+                    <TrendingUp size={14} className="text-emerald-400" />
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-slate-200 truncate">{notification.title}</p>
                   <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">{notification.message}</p>
