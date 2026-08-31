@@ -10,9 +10,22 @@ import AssetDetail from './components/markets/AssetDetail.jsx';
 import JournalScreen from './components/journal/JournalScreen.jsx';
 import AlertsScreen from './components/alerts/AlertsScreen.jsx';
 import ProfileScreen from './components/profile/ProfileScreen.jsx';
+import { useEffect } from 'react';
 
 function AppContent() {
   const { activeTab, selectedAsset, selectedNews, selectedPulseMetric, darkMode } = useApp();
+
+  // Sync theme class to html element (like reference project)
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (darkMode) {
+      root.classList.remove('light');
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+      root.classList.add('light');
+    }
+  }, [darkMode]);
 
   const renderScreen = () => {
     if (activeTab === 'home') {
@@ -31,7 +44,7 @@ function AppContent() {
   };
 
   return (
-    <div className={`flex flex-col h-screen ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-100 text-gray-900'}`} data-theme={darkMode ? 'dark' : 'light'}>
+    <div className="flex flex-col h-screen">
       <ScrollToTop activeTab={activeTab} selectedAsset={selectedAsset} selectedNews={selectedNews} selectedPulseMetric={selectedPulseMetric} />
       <main className="flex-1 overflow-y-auto scroll-hide pb-24">
         {renderScreen()}

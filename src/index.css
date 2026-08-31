@@ -65,7 +65,7 @@
   }
 
   /* Dark mode (default) */
-  :root, html, body[data-theme='dark'], body:not([data-theme]) {
+  :root, html.dark {
     --bg-primary: #0A0E1A;
     --bg-primary-to: #0D1525;
     --bg-secondary: #1A2035;
@@ -86,7 +86,7 @@
     color-scheme: dark;
   }
 
-  body[data-theme='dark'], body:not([data-theme]) {
+  html.dark {
     background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-primary-to) 100%);
     background-attachment: fixed;
     color: var(--text-primary);
@@ -94,7 +94,7 @@
   }
 
   /* Light mode */
-  body[data-theme='light'] {
+  html.light {
     --bg-primary: #F8FAFC;
     --bg-primary-to: #F8FAFC;
     --bg-secondary: #FFFFFF;
