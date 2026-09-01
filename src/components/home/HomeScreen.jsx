@@ -151,9 +151,9 @@ export default function HomeScreen() {
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
-      {/* Sticky Home header — transparent, theme-aware */}
+      {/* Sticky Home header — logo + bell only, with backdrop for readability */}
       <div className="sticky top-0 z-10 theme-bg-primary/85 backdrop-blur-xl -mx-4 px-4 pb-2">
-        <div className="flex items-center justify-between mb-4 pt-1">
+        <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
               <Sparkles size={20} className="text-white" />
@@ -170,11 +170,12 @@ export default function HomeScreen() {
             )}
           </button>
         </div>
+      </div>
 
-        <div className="mb-3">
-          <p className="text-sm theme-text-secondary">{greeting}, {userName}</p>
-          <p className="text-xs theme-text-secondary">{session} &bull; {currentTime} {timezoneLabel}</p>
-        </div>
+      {/* Greeting + session/time — scrolls normally */}
+      <div className="mb-5">
+        <p className="text-sm theme-text-secondary">{greeting}, {userName}</p>
+        <p className="text-xs theme-text-secondary">{session} &bull; {currentTime} {timezoneLabel}</p>
       </div>
 
       <div className="mb-5 bg-gradient-to-br from-emerald-500/8 via-emerald-500/4 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4 glow-emerald">
