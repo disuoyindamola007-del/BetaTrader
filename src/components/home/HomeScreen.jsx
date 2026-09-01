@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApp } from '../../AppContext.jsx';
 import {
   Search, TrendingUp, TrendingDown, ArrowRight,
-  Activity, BookOpen, Bell, BarChart3,
+  Activity, BookOpen, Bell, BarChart3, Heart,
   ChevronRight, Sparkles, RefreshCw, Clock
 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications.js';
@@ -15,7 +15,7 @@ import PriceChange from '../shared/PriceChange.jsx';
 import { SkeletonCard, SkeletonMetric, SkeletonNews, SkeletonText } from '../shared/Skeleton.jsx';
 
 export default function HomeScreen() {
-  const { navigateToAsset, navigateToNews, navigateToPulseMetric, setActiveTab, openMarketSearch, userName, timezone } = useApp();
+  const { navigateToAsset, navigateToNews, navigateToPulseMetric, setActiveTab, openMarketSearch, userName, timezone, favorites } = useApp();
   const { news: liveNews, isLoading: newsLoading, error: newsError, errorType: newsErrorType, reload: reloadNews } = useNews();
   const {
     pulse: livePulse, briefing: liveBriefing, briefingGeneratedAt,
@@ -72,12 +72,10 @@ export default function HomeScreen() {
   const { data: cryptoData, isLoading: cryptoLoading, isStale: cryptoStale } = useCryptoBatch(true);
   const { data: btcCandles, error: chartError } = useCandles('BTC', '1h', { enabled: true, limit: 100 });
 
-  // FIX: watchlist entries are already symbol strings (e.g. 'EUR/USD', 'BTC'),
-  // not objects — the old `.map(w => w.symbol)` produced `undefined` for every
-  // entry, which caused malformed batch requests like /api/stocks/,,,,, 
+  // Use user's favorites (watchlist) instead of static mock watchlist
   const watchlistSymbols = useMemo(() =>
-    watchlist.filter(s => getCategory(s) !== 'crypto'),
-  []);
+    favorites.filter(s => getCategory(s) !== 'crypto'),
+  [favorites]);
   const { data: watchlistQuotes, isLoading: wlLoading, isStale: wlStale } = useBatchQuotes(watchlistSymbols, watchlistSymbols.length > 0);
 
   const livePrices = useMemo(() => ({ ...cryptoData, ...watchlistQuotes }), [cryptoData, watchlistQuotes]);
@@ -144,7 +142,18 @@ export default function HomeScreen() {
     return { gainers: arr.filter(x => x.changePct > 0).slice(0,3), losers: arr.filter(x => x.changePct < 0).slice(0,3) };
   };
 
-  const watchlistAssets = watchlist.map(getAssetData).filter(Boolean);
+  // Build watchlist assets from user favorites
+  const allWatchlistAssets = useMemo(() => {
+    if (favorites.length === 0) return [];
+    return favorites.map(symbol => {
+      const mock = mockAssets.find(a => a.symbol === symbol);
+      if (!mock) return null;
+      const live = livePrices[symbol.replace('/', '')];
+      return live ? { ...mock, price: live.price, change: live.change, changePct: live.changePct } : mock;
+    }).filter(Boolean);
+  }, [favorites, livePrices]);
+  const watchlistAssets = allWatchlistAssets.slice(0, 6);
+  const hasMoreWatchlist = allWatchlistAssets.length > 6;
   const liveTrending = Object.keys(livePrices).length > 0 ? getLiveTrending() : trending;
 
   const displayedNews = liveNews.length > 0 ? liveNews : [];
@@ -162,9 +171,9 @@ export default function HomeScreen() {
           </div>
           <button
             onClick={() => setActiveTab('notifications')} 
-            className="w-10 h-10 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors relative"
+            className="w-9 h-9 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors relative"
           >
-            <Bell size={18} className="text-slate-400" />
+            <Bell size={16} className="text-slate-400" />
             {unreadCount > 0 && (
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
             )}
@@ -263,24 +272,35 @@ export default function HomeScreen() {
       <div className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <span className="section-title">Watchlist</span>
-          <button onClick={() => setActiveTab('markets')} className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1">View All <ChevronRight size={12} /></button>
+          {hasMoreWatchlist && (
+            <button onClick={() => setActiveTab('watchlist')} className="text-xs text-emerald-400 font-medium hover:text-emerald-300 transition-colors flex items-center gap-1">See More <ChevronRight size={12} /></button>
+          )}
         </div>
-        <div className="flex flex-col gap-2">
-          {watchlistAssets.map((asset) => (
-            <button key={asset.symbol} onClick={() => navigateToAsset(asset)} className="glass-card-hover p-3.5 flex items-center justify-between text-left">
-              <div className="flex items-center gap-3">
-                <div>
-                  <p className="text-sm font-bold">{asset.symbol}</p>
-                  <p className="text-[10px] text-slate-500">{asset.name}</p>
+        {watchlistAssets.length === 0 ? (
+          <div className="glass-card p-6 text-center flex flex-col items-center gap-2">
+            <Heart size={24} className="text-slate-600" />
+            <p className="text-sm font-semibold theme-text-primary">No favorites yet</p>
+            <p className="text-xs theme-text-secondary">Tap the heart icon on any asset to add it to your watchlist.</p>
+            <button onClick={() => setActiveTab('markets')} className="btn-primary mt-2 text-xs py-2 px-4">Browse Markets</button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {watchlistAssets.map((asset) => (
+              <button key={asset.symbol} onClick={() => navigateToAsset(asset)} className="glass-card-hover p-3.5 flex items-center justify-between text-left">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="text-sm font-bold">{asset.symbol}</p>
+                    <p className="text-[10px] theme-text-secondary">{asset.name}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-bold font-mono">{asset.symbol === 'BTC' ? `$${asset.price?.toLocaleString() || asset.price}` : asset.price?.toFixed(4) || asset.price}</p>
-                <PriceChange value={asset.change} pct={asset.changePct} />
-              </div>
-            </button>
-          ))}
-        </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold font-mono">{asset.price != null ? (asset.price > 1000 ? `$${asset.price.toLocaleString()}` : asset.price.toFixed(4)) : '--'}</p>
+                  <PriceChange value={asset.change} pct={asset.changePct} />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mb-5">
@@ -332,15 +352,7 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-3"><span className="section-title">Quick Actions</span></div>
-        <div className="grid grid-cols-2 gap-2.5">
-          <button onClick={openMarketSearch} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-emerald-500/30 transition-colors group"><Search size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Analyze Asset</span></button>
-          <button onClick={() => setActiveTab('markets')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-blue-500/30 transition-colors group"><BarChart3 size={20} className="text-blue-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Run Backtest</span></button>
-          <button onClick={() => setActiveTab('journal')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-violet-500/30 transition-colors group"><BookOpen size={20} className="text-violet-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Open Journal</span></button>
-          <button onClick={() => setActiveTab('alerts')} className="glass-card p-4 flex flex-col items-center gap-2 hover:border-amber-500/30 transition-colors group"><Bell size={20} className="text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold text-slate-300">Create Alert</span></button>
-        </div>
-      </div>
+
 
     </div>
   );

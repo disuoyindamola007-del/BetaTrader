@@ -121,10 +121,23 @@ export function AppProvider({ children }) {
   const timezone = settings.timezone || 'UTC';
   const setTimezone = (value) => setSettings(updateSetting('timezone', value));
 
-  // Favorites/watchlist — persisted per device. No dedicated "My Favorites"
-  // screen yet; this just makes the heart button on Asset Detail real.
+  // Toast notifications — ephemeral, for user feedback on actions
+  const [toast, setToast] = useState(null); // { message, type, id }
+  const showToast = (message, type = 'info', duration = 1500) => {
+    const id = Date.now();
+    setToast({ message, type, id });
+    setTimeout(() => setToast(prev => prev?.id === id ? null : prev), duration);
+  };
+
+  // Favorites/watchlist — persisted per device
   const [favorites, setFavorites] = useState(() => getFavorites());
-  const toggleFavorite = (symbol) => setFavorites(toggleFavoriteInStorage(symbol));
+  const toggleFavorite = (symbol) => {
+    const wasFav = favorites.includes(symbol);
+    const updated = toggleFavoriteInStorage(symbol);
+    setFavorites(updated);
+    // Show flash feedback
+    showToast(wasFav ? 'Removed from watchlist' : 'Added to watchlist', wasFav ? 'info' : 'success');
+  };
   const isFavorite = (symbol) => favorites.includes(symbol);
 
   const navigateToAsset = (asset) => {
@@ -177,6 +190,7 @@ export function AppProvider({ children }) {
     notificationsEnabled, setNotificationsEnabled,
     timezone, setTimezone,
     favorites, toggleFavorite, isFavorite,
+    toast,
     userName, setUserName,
   };
 

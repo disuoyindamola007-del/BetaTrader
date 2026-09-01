@@ -1,11 +1,13 @@
 import { AppProvider, useApp } from './AppContext.jsx';
 import BottomNav from './components/shared/BottomNav.jsx';
 import ScrollToTop from './components/shared/ScrollToTop.jsx';
+import Toast from './components/shared/Toast.jsx';
 import HomeScreen from './components/home/HomeScreen.jsx';
 import NewsScreen from './components/home/NewsScreen.jsx';
 import NewsDetail from './components/home/NewsDetail.jsx';
 import MarketPulseDetail from './components/home/MarketPulseDetail.jsx';
 import NotificationsScreen from './components/home/NotificationsScreen.jsx';
+import WatchlistScreen from './components/home/WatchlistScreen.jsx';
 import MarketsScreen from './components/markets/MarketsScreen.jsx';
 import AssetDetail from './components/markets/AssetDetail.jsx';
 import JournalScreen from './components/journal/JournalScreen.jsx';
@@ -36,6 +38,7 @@ function AppContent() {
     }
     if (activeTab === 'news') return <NewsScreen />;
     if (activeTab === 'notifications') return <NotificationsScreen />;
+    if (activeTab === 'watchlist') return <WatchlistScreen />;
     if (activeTab === 'markets') {
       return selectedAsset ? <AssetDetail /> : <MarketsScreen />;
     }
@@ -47,6 +50,7 @@ function AppContent() {
 
   return (
     <div className="flex flex-col h-screen">
+      <Toast />
       <ScrollToTop activeTab={activeTab} selectedAsset={selectedAsset} selectedNews={selectedNews} selectedPulseMetric={selectedPulseMetric} />
       <main className="flex-1 overflow-y-auto scroll-hide pb-24">
         {renderScreen()}

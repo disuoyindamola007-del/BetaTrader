@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../AppContext.jsx';
-import { Search, ChevronRight, RefreshCw, AlertTriangle, Clock, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw, AlertTriangle, Clock } from 'lucide-react';
 import { mockAssets } from '../../data/mockData.js';
 import { useCryptoBatch, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
@@ -154,12 +154,6 @@ export default function MarketsScreen() {
                   </p>
                   <PriceChange value={unsupportedSymbols.has(asset.symbol) ? null : (hasLive ? live.change : asset.change)} pct={unsupportedSymbols.has(asset.symbol) ? null : (hasLive ? live.changePct : asset.changePct)} />
                 </div>
-                {hasLive && live.changePct != null && (
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${live.changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {live.changePct >= 0 ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-                    {Math.abs(live.changePct).toFixed(2)}%
-                  </span>
-                )}
               </div>
             </button>
           );
