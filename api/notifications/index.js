@@ -16,7 +16,10 @@ export default async function handler(req, res) {
   }
 
   const apiKey = process.env.FINNHUB_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Notifications not configured' });
+  if (!apiKey) {
+    // Graceful fallback: return empty notifications instead of 500
+    return res.status(200).json({ notifications: [], cached: false, provider: 'none' });
+  }
 
   const cacheKey = 'notifications:latest';
   
