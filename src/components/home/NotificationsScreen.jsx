@@ -4,7 +4,7 @@ import { useApp } from '../../AppContext.jsx';
 import { useNotifications } from '../../hooks/useNotifications.js';
 
 export default function NotificationsScreen() {
-  const { goBack } = useApp();
+  const { setActiveTab } = useApp();
   const { notifications, isLoading, error, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [filter, setFilter] = useState('all'); // all, unread, read
 
@@ -23,11 +23,11 @@ export default function NotificationsScreen() {
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-transparent -mx-4 px-4 pb-2">
+      <div className="sticky top-0 z-10 theme-bg-primary/85 backdrop-blur-xl -mx-4 px-4 pb-2">
         <div className="flex items-center justify-between mb-4 pt-1">
           <div className="flex items-center gap-3">
             <button
-              onClick={goBack}
+              onClick={() => setActiveTab('home')}
               className="w-9 h-9 glass-card flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors"
             >
               <ArrowLeft size={18} />
@@ -45,7 +45,7 @@ export default function NotificationsScreen() {
         </div>
 
         {/* Filter tabs */}
-        <div className="flex gap-1 mb-3 bg-slate-800/50 p-1 rounded-xl">
+        <div className="flex gap-1 mb-3 theme-bg-tertiary/50 p-1 rounded-xl">
           {[
             { id: 'all', label: 'All' },
             { id: 'unread', label: `Unread (${unreadCount})` },
@@ -56,8 +56,8 @@ export default function NotificationsScreen() {
               onClick={() => setFilter(tab.id)}
               className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
                 filter === tab.id
-                  ? 'bg-slate-700 text-emerald-400'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? 'theme-bg-secondary text-emerald-400'
+                  : 'theme-text-secondary hover:theme-text-primary'
               }`}
             >
               {tab.label}
@@ -113,7 +113,7 @@ export default function NotificationsScreen() {
                     {new Date(notification.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   {notification.source && (
-                    <span className="text-[9px] text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">{notification.source}</span>
+                    <span className="text-[9px] theme-text-muted theme-bg-tertiary px-1.5 py-0.5 rounded">{notification.source}</span>
                   )}
                   {!notification.read && (
                     <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>

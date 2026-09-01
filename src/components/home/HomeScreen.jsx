@@ -152,7 +152,7 @@ export default function HomeScreen() {
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
       {/* Sticky Home header — transparent, theme-aware */}
-      <div className="sticky top-0 z-10 bg-transparent -mx-4 px-4 pb-2">
+      <div className="sticky top-0 z-10 theme-bg-primary/85 backdrop-blur-xl -mx-4 px-4 pb-2">
         <div className="flex items-center justify-between mb-4 pt-1">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">

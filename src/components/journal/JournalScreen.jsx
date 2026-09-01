@@ -520,7 +520,7 @@ export default function JournalScreen() {
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
       {/* Sticky header: title + tab bar — transparent, theme-aware */}
-      <div className="sticky top-0 z-10 bg-transparent pb-2">
+      <div className="sticky top-0 z-10 theme-bg-primary/85 backdrop-blur-xl pb-2">
         <div className="flex items-center justify-between mb-3 pt-1">
           <h1 className="text-xl font-extrabold">Trading Journal</h1>
           <button

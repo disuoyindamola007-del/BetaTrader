@@ -57,7 +57,7 @@ export default function ProfileScreen() {
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in relative">
       {/* Sticky top region: header + user card + stats — transparent, theme-aware */}
-      <div className="sticky top-0 z-10 bg-transparent -mx-4 px-4 pb-2">
+      <div className="sticky top-0 z-10 theme-bg-primary/85 backdrop-blur-xl -mx-4 px-4 pb-2">
         <h1 className="text-xl font-extrabold mb-4 pt-1">Profile</h1>
 
         {/* Toast feedback for not-yet-built features */}

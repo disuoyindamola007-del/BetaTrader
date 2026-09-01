@@ -63,33 +63,67 @@ export default function MarketsScreen() {
 
   return (
     <div className="px-4 pt-4 pb-6 animate-fade-in">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-extrabold">Markets</h1>
-        {isLoading && <RefreshCw size={16} className="text-emerald-400 animate-spin" />}
-      </div>
-
-      {/* Rate limit / stale warning */}
-      {(rateLimitError || isStale) && (
-        <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
-          <AlertTriangle size={16} className="text-amber-400 shrink-0" />
-          <div className="flex-1">
-            <p className="text-xs text-amber-400">
-              {rateLimitError ? `${rateLimitError} — ` : ''}Showing latest available market data
-              {isStale && <span className="ml-1 inline-flex items-center gap-1"><Clock size={12} />(stale)</span>}
-            </p>
-          </div>
+      {/* Sticky control region: header, search, categories — with backdrop for readability */}
+      <div className="sticky top-0 z-10 theme-bg-primary/85 backdrop-blur-xl -mx-4 px-4 pb-2">
+        <div className="flex items-center justify-between mb-4 pt-1">
+          <h1 className="text-xl font-extrabold">Markets</h1>
+          {isLoading && <RefreshCw size={16} className="text-emerald-400 animate-spin" />}
         </div>
-      )}
 
-      {/* Search */}
-      <div className="relative mb-4">
-        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-        <input ref={searchInputRef} type="search" placeholder="Search crypto, forex, or stocks" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full input-field pl-11 pr-10" autoComplete="off" aria-label="Search markets" />
-        {searchLoading && <RefreshCw size={15} className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-400 animate-spin" />}
+        {/* Rate limit / stale warning */}
+        {(rateLimitError || isStale) && (
+          <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-xs text-amber-400">
+                {rateLimitError ? `${rateLimitError} — ` : ''}Showing latest available market data
+                {isStale && <span className="ml-1 inline-flex items-center gap-1"><Clock size={12} />(stale)</span>}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Search */}
+        <div className="relative mb-3">
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input ref={searchInputRef} type="search" placeholder="Search crypto, forex, or stocks" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full input-field pl-11 pr-10" autoComplete="off" aria-label="Search markets" />
+          {searchLoading && <RefreshCw size={15} className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-400 animate-spin" />}
+        </div>
+
+        {searchQuery.trim() && (
+          <div className="mb-3 border-y theme-border">
+            {searchResults.map(result => (
+              <button
+                key={`${result.category}:${result.symbol}:${result.providerSymbol || result.source}`}
+                onClick={() => navigateToAsset(assetFromSearchResult(result))}
+                className="w-full min-h-14 py-3 flex items-center justify-between gap-3 text-left border-b theme-border last:border-b-0 hover:theme-bg-tertiary transition-colors"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold">{result.symbol}</span>
+                    <span className="text-[10px] uppercase theme-text-secondary">{result.category}</span>
+                  </div>
+                  <p className="text-xs theme-text-secondary truncate">{result.name}</p>
+                </div>
+                <ChevronRight size={16} className="shrink-0 theme-text-secondary" />
+              </button>
+            ))}
+            {!searchLoading && searchResults.length === 0 && (
+              <p className="py-8 text-center text-sm text-slate-500 theme-text-secondary">No supported symbols found</p>
+            )}
+            {searchError && <p className="pb-3 text-center text-xs text-amber-400">Search is temporarily unavailable.</p>}
+          </div>
+        )}
+
+        {/* Categories */}
+        <div className="flex gap-2 overflow-x-auto scroll-hide pb-1">
+          {categories.map(cat => (
+            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-emerald-500 text-slate-950' : 'theme-bg-secondary theme-text-secondary theme-border hover:theme-text-primary'}`}>
+              {cat.toUpperCase()}
+            </button>
+          ))}
+        </div>
       </div>
-
-      {searchQuery.trim() && (
-        <div className="mb-5 border-y border-slate-800/60">
           {searchResults.map(result => (
             <button
               key={`${result.category}:${result.symbol}:${result.providerSymbol || result.source}`}
