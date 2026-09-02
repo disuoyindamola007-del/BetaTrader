@@ -6,7 +6,7 @@ import {
   ChevronRight, Sparkles, RefreshCw, Clock
 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications.js';
-import { mockAssets, watchlist, trending } from '../../data/mockData.js';
+import { mockAssets, trending } from '../../data/mockData.js';
 import { useNews } from '../../hooks/useNews.js';
 import { useMarketOverview } from '../../hooks/useMarketOverview.js';
 import { useCryptoBatch, useCandles, useBatchQuotes } from '../../hooks/useMarketData.js';

@@ -1,3 +1,5 @@
+// Static catalog metadata used for display names, categories, and fallback prices when a live provider is unavailable.
+// Live quotes, watchlist membership, journal trades, alerts, news, and market pulse data come from services/hooks.
 export const mockAssets = [
   { symbol: 'EUR/USD', name: 'Euro / US Dollar', category: 'forex', price: 1.08542, change: 0.12, changePct: 0.11 },
   { symbol: 'USD/JPY', name: 'US Dollar / Japanese Yen', category: 'forex', price: 157.832, change: -0.45, changePct: -0.28 },
@@ -18,8 +20,7 @@ export const mockAssets = [
   { symbol: 'DJI', name: 'Dow Jones', category: 'indices', price: 41250.30, change: -120.50, changePct: -0.29 },
 ];
 
-export const watchlist = ['EUR/USD', 'BTC', 'GOLD', 'SOL', 'SPX'];
-
+// Fallback only: Home calculates trending from live crypto quotes whenever available.
 export const trending = {
   gainers: [
     { symbol: 'SOL', changePct: 8.23 },
@@ -33,6 +34,8 @@ export const trending = {
   ],
 };
 
+/* Legacy demo data removed: journal trades are persisted by journalService.js. */
+/*
 export const journalTrades = [
   {
     id: 1,
@@ -90,8 +93,12 @@ export const journalTrades = [
   },
 ];
 
+*/
+/* Legacy demo data removed: alerts are persisted by alertsService.js. */
+/*
 export const alerts = [
   { id: 1, asset: 'EUR/USD', type: 'price', condition: 'above', value: '1.0900', status: 'active' },
   { id: 2, asset: 'BTC', type: 'price', condition: 'below', value: '65,000', status: 'active' },
   { id: 3, asset: 'GOLD', type: 'indicator', condition: 'RSI(14) above', value: '70', status: 'triggered' },
 ];
+*/
