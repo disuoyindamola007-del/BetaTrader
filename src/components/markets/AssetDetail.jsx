@@ -392,11 +392,11 @@ export default function AssetDetail() {
         </div>
 
         {/* AI Analysis */}
-        <div className="mb-5 bg-gradient-to-br from-emerald-500/8 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4">
+        <div className="mb-5 bg-gradient-to-br from-emerald-500/8 to-cyan-500/5 border border-emerald-500/15 rounded-2xl p-4 theme-text-primary">
           <div className="flex items-center gap-2 mb-3"><Sparkles size={16} className="text-emerald-400" /><span className="text-[11px] font-bold tracking-wider text-emerald-400 uppercase">AI Analysis</span></div>
 
           {isAnalyzing && (
-            <div className="flex items-center gap-2 text-sm text-slate-400">
+            <div className="flex items-center gap-2 text-sm theme-text-secondary">
               <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
               Analyzing {selectedAsset.symbol}...
             </div>
@@ -410,20 +410,24 @@ export default function AssetDetail() {
           )}
 
           {!isAnalyzing && !analyzeError && analysis && (
-            <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
+            <div className="text-sm theme-text-secondary leading-relaxed whitespace-pre-line">
               {analysis.split('\n').map((line, i) => {
-                // Bold section headers like **Trend Read**
-                if (line.startsWith('**') && line.endsWith('**')) {
-                  return <p key={i} className="font-semibold text-emerald-400 mt-3 mb-1 text-xs uppercase tracking-wide">{line.replace(/\*\*/g, '')}</p>;
+                // The model may return Markdown headings. Render clean, readable text instead.
+                const cleanLine = line
+                  .replace(/\*+/g, '')
+                  .replace(/^\s*#+\s*/, '')
+                  .trim();
+                const isHeading = /^(?:Trend Read|Momentum|Volatility(?: &| and) Range|News Context|Overall Read)\s*:??$/i.test(cleanLine);
+                if (isHeading) {
+                  return <p key={i} className="font-semibold text-emerald-500 mt-3 mb-1 text-xs uppercase tracking-wide">{cleanLine.replace(/\s*:$/, '')}</p>;
                 }
-                // Regular content lines
-                return <p key={i} className="mb-2">{line}</p>;
+                return <p key={i} className="mb-2">{cleanLine}</p>;
               })}
             </div>
           )}
 
           {!isAnalyzing && !analyzeError && !analysis && (
-            <p className="text-sm text-slate-500 leading-relaxed">
+            <p className="text-sm theme-text-secondary leading-relaxed">
               {hasIndicators ? 'Tap Analyze for an AI read on current conditions.' : 'Not enough price history yet to analyze this asset.'}
             </p>
           )}
