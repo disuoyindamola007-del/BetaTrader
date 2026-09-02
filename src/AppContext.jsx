@@ -1,10 +1,31 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSettings, updateSetting } from './services/settingsService.js';
 import { getFavorites, toggleFavorite as toggleFavoriteInStorage } from './services/favoritesService.js';
+import { supabase, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const AppContext = createContext();
 
 export function AppProvider({ children }) {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+
+  useEffect(() => {
+    if (!supabase) return undefined;
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) { setSession(data.session); setAuthLoading(false); }
+    }).catch(() => { if (mounted) setAuthLoading(false); });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (mounted) { setSession(nextSession); setAuthLoading(false); }
+    });
+    return () => { mounted = false; listener.subscription.unsubscribe(); };
+  }, []);
+
+  const signOut = async () => {
+    if (supabase) await supabase.auth.signOut();
+    setSession(null);
+  };
+
   const [activeTab, setActiveTab] = useState(() => {
     try {
       return localStorage.getItem('betatrader:activeTab') || 'home';
@@ -180,6 +201,8 @@ export function AppProvider({ children }) {
 
   const value = {
     activeTab, setActiveTab,
+    session, authLoading, signOut,
+    isAuthenticated: Boolean(session),
     selectedAsset, setSelectedAsset, navigateToAsset, goBack,
     selectedNews, navigateToNews, clearNewsSelection,
     selectedPulseMetric, navigateToPulseMetric,

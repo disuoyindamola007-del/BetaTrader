@@ -13,10 +13,12 @@ import AssetDetail from './components/markets/AssetDetail.jsx';
 import JournalScreen from './components/journal/JournalScreen.jsx';
 import AlertsScreen from './components/alerts/AlertsScreen.jsx';
 import ProfileScreen from './components/profile/ProfileScreen.jsx';
+import AuthScreen from './components/auth/AuthScreen.jsx';
+import { Loader2 } from 'lucide-react';
 import { useEffect } from 'react';
 
 function AppContent() {
-  const { activeTab, selectedAsset, selectedNews, selectedPulseMetric, darkMode } = useApp();
+  const { activeTab, selectedAsset, selectedNews, selectedPulseMetric, darkMode, authLoading, isAuthenticated } = useApp();
 
   // Sync theme class to html element (like reference project)
   useEffect(() => {
@@ -29,6 +31,11 @@ function AppContent() {
       root.classList.add('light');
     }
   }, [darkMode]);
+
+  if (authLoading) {
+    return <div className="min-h-screen theme-bg-primary flex items-center justify-center"><Loader2 className="text-emerald-400 animate-spin" size={28} /></div>;
+  }
+  if (!isAuthenticated) return <AuthScreen />;
 
   const renderScreen = () => {
     if (activeTab === 'home') {
