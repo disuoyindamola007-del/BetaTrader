@@ -208,20 +208,138 @@ The prior AI analysis sent only RSI(14) and EMA 9/21/50 from a single timeframe,
 
 ---
 
-## Phase 7 — Code cleanup
+## Phase 7 — Code cleanup ✅ COMPLETE
 
-- Remove or archive the three untracked `_backup-before-*` folders (`_backup-before-phase4`, `_backup-before-phase4-20260721-223446`, `_backup-before-kimi-merge`) once confirmed unnecessary
-- Remove dead code (e.g., unused `avSymbols` variable, any other flagged-but-unused variables found during Phase 1)
-- Reduce remaining dependency on `mockData.js` where feasible — at minimum, document clearly which parts of `mockAssets` (name/bias/confidence metadata) are intentionally staying static vs. which should eventually be dynamic
+Completed and verified in commits `62b4b3c`, `f01ae82`, and `b786614`:
+
+- [x] Removed obsolete local backup folders from the active project. They were ignored and were not tracked or pushed to GitHub.
+- [x] Removed obsolete demo journal trades, demo alerts, and the unused static watchlist export.
+- [x] Removed the unused `watchlist` import from `HomeScreen.jsx`.
+- [x] Audited mock-data usage. `mockAssets` is intentionally retained as a static catalog for symbols, display names, categories, and fallback values. Trending is fallback-only; live quotes are used whenever available.
+- [x] Confirmed journal data comes from `journalService.js`, alert data from `alertsService.js`, watchlist membership from persisted favorites, and market/news/pulse data from live services/API routes.
+- [x] Searched for dead-code markers and obsolete browser dialogs. No remaining `TODO`, `FIXME`, `HACK`, `window.confirm()`, or browser `alert()` issues were found. Structured logs and PWA logs are intentional.
+- [x] Fixed AI Analysis Light Mode readability and removed Markdown emphasis symbols from rendered output in commit `b786614`.
+
+**Verification record:** `npm run build` passed, `git diff --check` passed, the working tree is clean, changes were pushed to `main`, and the user verified the Phase 6.7–6.9 and AI Analysis fixes live.
+
+**Exit check:** [x] Phase 7 complete. The project is ready for Batch 2 authentication and accounts work.
 
 ---
 
-## Phase 8 — Auth & accounts (Batch 2, post-launch-readiness)
+## Phase 8 — Authentication, accounts, and cloud sync (Batch 2)
 
-Only after everything above is verified real and stable:
+Phase 8 moves BetaTrader from a single-device local experience to a secure multi-user product while preserving existing functionality. Every item must be implemented, committed, build-verified, and tested with real authenticated users before Phase 8 is marked complete.
 
-- User authentication (Supabase Auth)
-- Cloud-synced watchlist, journal, and alerts (currently all device-local via `localStorage`) — will need proper Row Level Security policies so each user only ever sees their own data, distinct from the server-only `cache` table's current zero-policy setup
+### 8.0 — Architecture and safety preparation
+
+- [ ] Confirm the correct Supabase project: BetaTrader project `incciljsxgujwltugdcj`; never modify the unrelated LearnFromOla project.
+- [ ] Audit current localStorage models and define cloud schemas for profiles/settings, favorites/watchlist, journal trades, alerts, and notifications where synchronization is required.
+- [ ] Define local-data migration behavior before implementation: show local item counts, let the user choose import/merge/skip, prevent duplicates, and never overwrite data silently.
+- [ ] Require `user_id` ownership on every user-owned row. Never trust a client-supplied user ID; derive ownership from the authenticated Supabase session.
+- [ ] Keep user data separate from the existing server-only market cache. Do not weaken cache RLS or expose the service-role key to browser code.
+- [ ] Define sign-out, account deletion, data export, recovery, rollback, and offline behavior.
+- [ ] Use a staging/test account and database backup before production migrations.
+
+### 8.1 — Supabase Auth foundation
+
+- [ ] Configure Supabase Auth providers, email settings, and redirect URLs for Vercel production, preview, and local development.
+- [ ] Build sign-up with email/password and proper validation.
+- [ ] Build sign-in with invalid-credentials, duplicate-email, network-error, and loading states.
+- [ ] Implement email verification and resend-verification handling.
+- [ ] Implement forgot-password and secure reset-password flows.
+- [ ] Persist and restore sessions across refreshes and browser restarts.
+- [ ] Handle expired sessions and auth loading without flashing private screens.
+- [ ] Implement sign-out and clear active private UI/cache state safely.
+- [ ] Protect authenticated screens and define the unauthenticated landing/auth experience.
+- [ ] Ensure only the public Supabase URL and anon/publishable key reach the frontend; never include service-role credentials in client code or logs.
+
+### 8.2 — Profiles and settings
+
+- [ ] Create a `profiles` table keyed by `user_id`, including display name, avatar/initial, timezone, plan metadata, and created/updated timestamps.
+- [ ] Create profiles securely for new users using a trigger or trusted server-side path.
+- [ ] Add RLS so a user can select and update only their own profile.
+- [ ] Replace or extend the current local user-name/settings flow with the authenticated profile, retaining a safe migration fallback.
+- [ ] Build Personal Information editing.
+- [ ] Sync timezone, notification preference, and theme settings to the user profile where appropriate.
+- [ ] Show authenticated email/account status where appropriate.
+- [ ] Keep Subscription marked Coming Soon unless billing and entitlements have a real server-side source of truth.
+
+### 8.3 — Cloud watchlist/favorites
+
+- [ ] Create a user-owned `watchlist`/`favorites` table with `user_id`, symbol, provider/category metadata, created/updated timestamps, and a unique constraint per user/symbol.
+- [ ] Add RLS for select, insert, update, and delete limited to the authenticated owner.
+- [ ] Implement a dedicated authenticated service layer for reads/writes.
+- [ ] Preserve optimistic UI and rollback on failed writes.
+- [ ] Import existing local favorites once, with duplicate protection and confirmation.
+- [ ] Define signed-out and offline behavior.
+- [ ] Continue sourcing prices from existing live market-data services; cloud sync stores membership/metadata, not live prices.
+
+### 8.4 — Cloud journal
+
+- [ ] Create a user-owned `journal_trades` table containing all current fields: asset, provider/category, direction, status, entry, exit, stop-loss, take-profit, quantity/capital, leverage, lot type/size, result, P/L, date/time, timeframe, emotion, bias, strategy, notes, and created/updated timestamps.
+- [ ] Use suitable numeric and timestamp types, not only formatted strings.
+- [ ] Add validation constraints for ownership, status, direction, required fields, and valid financial values.
+- [ ] Add RLS for select, insert, update, and delete limited to the owner.
+- [ ] Replace or extend `journalService.js` with a cloud-backed repository while retaining migration/offline support.
+- [ ] Sync create, edit, delete, swipe-to-delete, and detail views with pending/error states.
+- [ ] Preserve realized/projected P/L, forex pip conversion, crypto liquidation validation, performance statistics, open-position count, and formatting.
+- [ ] Define conflict handling for multiple devices and prevent duplicate submissions.
+- [ ] Import existing local trades once with confirmation and duplicate protection.
+
+### 8.5 — Cloud alerts
+
+- [ ] Create a user-owned `alerts` table containing asset, provider/category, type, condition, threshold/value, status, created/updated timestamps, triggered timestamp, and notification state.
+- [ ] Add owner-only RLS policies for every operation.
+- [ ] Replace or extend `alertsService.js` with a cloud-backed repository while retaining local migration support.
+- [ ] Preserve active/triggered transitions and duplicate-alert behavior.
+- [ ] Decide how alerts work when the browser is closed. Client polling alone cannot guarantee background alerts; use a suitable server/cron/edge mechanism if reliable background delivery is required.
+- [ ] Keep browser notification permission separate from database alert state.
+- [ ] Import existing local alerts once with confirmation and duplicate protection.
+
+### 8.6 — Notifications and account security
+
+- [ ] Create user-owned notification records if notification history must sync across devices.
+- [ ] Add RLS for notification reads and marking notifications as read.
+- [ ] Preserve the full-page Notifications screen and unread badge behavior.
+- [ ] Add password-change and active-session controls where supported.
+- [ ] Implement account deletion with explicit confirmation and a trusted cascade/archive policy for user-owned rows.
+- [ ] Implement export of the user’s profile, watchlist, journal, alerts, and notifications.
+- [ ] Review XSS, CSRF, IDOR, authorization, sensitive logging, and secret-exposure risks.
+- [ ] Ensure signing out removes private records from active UI and does not leak another user’s cached data.
+
+### 8.7 — Local-to-cloud migration and multi-device sync
+
+- [ ] Build an explicit migration flow after first successful sign-in.
+- [ ] Display local data counts before import.
+- [ ] Define and implement merge behavior, cloud-wins/local-wins options, or a documented default.
+- [ ] Make imports idempotent and record migration version/completion per user.
+- [ ] Remove local copies only after successful cloud confirmation, unless intentionally retained as an offline cache.
+- [ ] Revalidate on focus or subscribe to changes so another device’s updates appear without a full reload.
+- [ ] Define offline retries and queues without creating duplicate trades or alerts.
+
+### 8.8 — Billing and plan enforcement (only if approved)
+
+- [ ] Decide whether paid subscriptions are part of this release. If not, leave Subscription as Coming Soon.
+- [ ] If approved, select a payment provider and implement server-verified checkout and webhooks.
+- [ ] Store subscription state server-side; never trust a client-only plan flag.
+- [ ] Enforce premium entitlements on API routes as well as in the UI.
+- [ ] Add billing portal, cancellation, failed-payment, renewal, and webhook replay handling.
+
+### 8.9 — Phase 8 verification and launch gate
+
+- [ ] Run migrations only against the BetaTrader Supabase project and verify every RLS policy with at least two separate test accounts.
+- [ ] Confirm User A cannot select, insert, update, delete, or infer User B’s rows through direct API calls or modified requests.
+- [ ] Test sign-up, verification, sign-in, refresh persistence, sign-out, password recovery, expired sessions, and network failures.
+- [ ] Test local import with empty, partial, duplicate, and large datasets.
+- [ ] Test watchlist, journal, alerts, and notifications on two browsers/devices using the same account.
+- [ ] Test isolation between two different accounts.
+- [ ] Test offline behavior, retries, duplicate submissions, and concurrent edits.
+- [ ] Confirm the market cache remains service-role-only and private user data never enters public cache keys or structured logs.
+- [ ] Run `npm run build`, syntax checks, dependency/security checks, and `git diff --check`.
+- [ ] Deploy to a preview environment, perform live verification, then deploy production.
+- [ ] Record migration names, commits, test accounts/results, deployment URL, and rollback steps in the handoff.
+
+**Phase 8 exit check:** Phase 8 is complete only when authentication, ownership, RLS, migration, sync, security, and live production behavior are implemented, committed, build-verified, and tested with at least two separate accounts.
 
 ---
 
