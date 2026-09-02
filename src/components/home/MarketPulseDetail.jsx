@@ -44,7 +44,7 @@ export default function MarketPulseDetail({ metric }) {
     <div className="animate-slide-up">
       <div className="sticky top-0 z-10 theme-bg-secondary/90 backdrop-blur-xl border-b theme-border px-4 py-3 flex items-center gap-3">
         <button onClick={goBack} className="w-9 h-9 glass-card flex items-center justify-center hover:bg-slate-800 transition-colors" aria-label="Back"><ArrowLeft size={18} /></button>
-        <span className="text-sm font-bold text-slate-200">Market Pulse</span>
+        <span className="text-sm font-bold theme-text-primary">Market Pulse</span>
       </div>
 
       <article className="px-4 pt-5 pb-8">
@@ -52,27 +52,27 @@ export default function MarketPulseDetail({ metric }) {
         <h1 className="text-2xl font-extrabold leading-tight mb-5">{content.title}</h1>
 
         <div className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 border border-emerald-500/20 rounded-2xl p-5 mb-5">
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Current reading</p>
+          <p className="text-[10px] theme-text-secondary uppercase tracking-wider mb-2">Current reading</p>
           <div className="flex items-end gap-3">
-            <span className="text-3xl font-extrabold font-mono text-slate-100">{metric.value}</span>
-            <span className={`text-sm font-semibold pb-1 ${metric.color === 'emerald' ? 'text-emerald-400' : metric.color === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>{metric.sublabel}</span>
+            <span className="text-3xl font-extrabold font-mono theme-text-primary">{metric.value}</span>
+            <span className={`text-sm font-semibold pb-1 ${metric.color === 'emerald' ? 'text-emerald-400' : metric.color === 'warning' ? 'text-amber-400' : 'theme-text-secondary'}`}>{metric.sublabel}</span>
           </div>
         </div>
 
         <div className="glass-card p-5 mb-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-100 mb-2">What it measures</h2>
-          <p className="text-sm leading-relaxed text-slate-300">{content.definition}</p>
+          <h2 className="text-xs font-bold uppercase tracking-wider theme-text-primary mb-2">What it measures</h2>
+          <p className="text-sm leading-relaxed theme-text-secondary">{content.definition}</p>
         </div>
 
         <div className="glass-card p-5 mb-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-100 mb-2">How to read this value</h2>
-          <p className="text-sm leading-relaxed text-slate-300">{content.read(metric.value, metric.sublabel)}</p>
+          <h2 className="text-xs font-bold uppercase tracking-wider theme-text-primary mb-2">How to read this value</h2>
+          <p className="text-sm leading-relaxed theme-text-secondary">{content.read(metric.value, metric.sublabel)}</p>
         </div>
 
         {(isLoading || explanation) && <div className="bg-emerald-500/8 border border-emerald-500/15 rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-3"><Sparkles size={16} className="text-emerald-400" /><span className="text-[11px] font-bold tracking-wider text-emerald-400 uppercase">AI Market Context</span></div>
-          {isLoading && <div className="flex items-center gap-2 text-sm text-slate-400"><RefreshCw size={15} className="animate-spin" />Reading the current market context...</div>}
-          {!isLoading && explanation && <p className="text-sm leading-relaxed text-slate-300">{explanation}</p>}
+          {isLoading && <div className="flex items-center gap-2 text-sm theme-text-secondary"><RefreshCw size={15} className="animate-spin" />Reading the current market context...</div>}
+          {!isLoading && explanation && <p className="text-sm leading-relaxed theme-text-secondary">{explanation}</p>}
         </div>}
       </article>
     </div>

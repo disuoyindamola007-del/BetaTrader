@@ -144,7 +144,7 @@ export default function ProfileScreen() {
 
       <button
         onClick={() => showComingSoon('Log Out')}
-        className="w-full mt-4 btn-secondary text-red-400 border-red-500/20 hover:bg-red-500/10"
+        className="w-full mt-4 btn-secondary text-red-400 border-red-500/20 hover:bg-red-500/10 flex items-center justify-center gap-2"
       >
         <LogOut size={16} />
         Log Out
