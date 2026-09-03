@@ -21,11 +21,11 @@ import { supabase } from './lib/supabaseClient.js';
 function isAuthCallbackUrl() {
   const params = new URLSearchParams(window.location.search);
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  return Boolean(params.get('code') || hash.get('access_token') || hash.get('error') || hash.get('error_code') || hash.get('type') === 'signup' || hash.get('type') === 'email');
+  return Boolean(params.get('code') || params.get('type') === 'recovery' || hash.get('access_token') || hash.get('error') || hash.get('error_code') || hash.get('type') === 'signup' || hash.get('type') === 'email' || hash.get('type') === 'recovery');
 }
 
 function AuthCallbackScreen() {
-  const [state, setState] = useState({ loading: true, error: null, expired: false });
+  const [state, setState] = useState({ loading: true, error: null, expired: false, recovery: false });
 
   useEffect(() => {
     let active = true;
@@ -34,6 +34,7 @@ function AuthCallbackScreen() {
         const code = new URLSearchParams(window.location.search).get('code');
         const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         const callbackError = hash.get('error_description') || hash.get('error_code');
+        const recovery = hash.get('type') === 'recovery' || new URLSearchParams(window.location.search).get('type') === 'recovery';
         if (callbackError) throw new Error(callbackError.replace(/\+/g, ' '));
         if (!supabase) throw new Error('Authentication is not configured for this deployment.');
         if (code) {
@@ -46,13 +47,16 @@ function AuthCallbackScreen() {
           const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
           if (error) throw error;
         }
-        await supabase.auth.signOut();
+        // Recovery links must keep the temporary session alive until the user
+        // chooses a new password. Email-confirmation links are signed out so
+        // confirmation never silently logs a user into the app.
         window.history.replaceState({}, '', window.location.pathname);
-        if (active) setState({ loading: false, error: null, expired: false });
+        if (!recovery) await supabase.auth.signOut();
+        if (active) setState({ loading: false, error: null, expired: false, recovery });
       } catch (error) {
         const message = error.message || 'Email confirmation could not be completed.';
         const expired = /expired|invalid|otp/i.test(message);
-        if (active) setState({ loading: false, error: message, expired });
+        if (active) setState({ loading: false, error: message, expired, recovery: false });
       }
     };
     finish();
@@ -68,8 +72,10 @@ function AuthCallbackScreen() {
     return () => clearTimeout(timer);
   }, [state.expired]);
 
+  if (!state.loading && !state.error && state.recovery) return <AuthScreen initialMode="reset" />;
+
   return <main className="min-h-screen theme-bg-primary flex items-center justify-center px-5"><div className="w-full max-w-md glass-card p-6 text-center">
-    {state.loading ? <><Loader2 className="mx-auto text-emerald-400 animate-spin" size={30} /><p className="text-sm theme-text-secondary mt-3">Confirming your email…</p></> : state.error ? <><AlertCircle className="mx-auto text-red-400" size={30} /><h1 className="text-lg font-bold theme-text-primary mt-3">{state.expired ? 'Verification link expired' : 'Email confirmation failed'}</h1><p className="text-sm text-red-400 mt-2">{state.expired ? 'This verification link is no longer valid. Redirecting you to sign in…' : state.error}</p></> : <><CheckCircle className="mx-auto text-emerald-400" size={30} /><h1 className="text-lg font-bold theme-text-primary mt-3">Email confirmed</h1><p className="text-sm theme-text-secondary mt-2">Your email is verified. Please sign in to continue.</p></>}
+    {state.loading ? <><Loader2 className="mx-auto text-emerald-400 animate-spin" size={30} /><p className="text-sm theme-text-secondary mt-3">Confirming your link…</p></> : state.error ? <><AlertCircle className="mx-auto text-red-400" size={30} /><h1 className="text-lg font-bold theme-text-primary mt-3">{state.expired ? 'Link expired' : 'Link could not be used'}</h1><p className="text-sm text-red-400 mt-2">{state.expired ? 'This link is no longer valid. Redirecting you to sign in…' : state.error}</p></> : <><CheckCircle className="mx-auto text-emerald-400" size={30} /><h1 className="text-lg font-bold theme-text-primary mt-3">Email confirmed</h1><p className="text-sm theme-text-secondary mt-2">Your email is verified. Please sign in to continue.</p></>}
     {!state.loading && <button onClick={() => window.location.reload()} className="w-full btn-primary mt-5">Continue to sign in</button>}
   </div></main>;
 }
