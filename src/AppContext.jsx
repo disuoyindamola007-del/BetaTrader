@@ -156,17 +156,23 @@ export function AppProvider({ children }) {
     } catch { /* ignore */ }
   }, [journalView]);
   const [userName, setUserName] = useState(null);
+  const [profile, setProfile] = useState({ firstName: '', lastName: '', displayName: '', email: '' });
 
   // Load the authenticated profile so greetings use the user's real first name.
   useEffect(() => {
-    if (!supabase || !session?.user?.id) { setUserName(null); return; }
+    if (!supabase || !session?.user?.id) { setUserName(null); setProfile({ firstName: '', lastName: '', displayName: '', email: '' }); return; }
     let active = true;
     const sessionName = getSessionFirstName(session);
     if (sessionName) setUserName(sessionName);
-    supabase.from('profiles').select('first_name, display_name').eq('user_id', session.user.id).single()
+    setProfile(current => ({ ...current, email: session.user.email || '' }));
+    supabase.from('profiles').select('first_name, last_name, display_name').eq('user_id', session.user.id).single()
       .then(({ data }) => {
         if (!active) return;
-        setUserName(data?.first_name || data?.display_name?.trim()?.split(/\s+/)[0] || sessionName || 'Trader');
+        const firstName = data?.first_name || sessionName || '';
+        const lastName = data?.last_name || session.user.user_metadata?.last_name || '';
+        const displayName = data?.display_name || [firstName, lastName].filter(Boolean).join(' ');
+        setProfile({ firstName, lastName, displayName, email: session.user.email || '' });
+        setUserName(firstName || displayName.trim().split(/\s+/)[0] || 'Trader');
       });
     return () => { active = false; };
   }, [session?.user?.id]);
@@ -181,6 +187,22 @@ export function AppProvider({ children }) {
   const setNotificationsEnabled = (value) => setSettings(updateSetting('notificationsEnabled', value));
   const timezone = settings.timezone || 'UTC';
   const setTimezone = (value) => setSettings(updateSetting('timezone', value));
+
+  const updateProfile = async ({ firstName, lastName, displayName }) => {
+    if (!supabase || !session?.user?.id) throw new Error('You must be signed in to edit your profile.');
+    const cleanFirst = firstName.trim();
+    const cleanLast = lastName.trim();
+    const cleanDisplay = displayName.trim() || [cleanFirst, cleanLast].filter(Boolean).join(' ');
+    if (!cleanFirst || !cleanLast) throw new Error('First name and last name are required.');
+    if (cleanFirst.length > 80 || cleanLast.length > 80 || cleanDisplay.length > 160) throw new Error('Please shorten the name fields.');
+    const { data, error } = await supabase.from('profiles').update({ first_name: cleanFirst, last_name: cleanLast, display_name: cleanDisplay, avatar_initial: cleanFirst.slice(0, 1).toUpperCase() }).eq('user_id', session.user.id).select('first_name, last_name, display_name').single();
+    if (error) throw error;
+    await supabase.auth.updateUser({ data: { first_name: cleanFirst, last_name: cleanLast, display_name: cleanDisplay } });
+    const next = { firstName: data.first_name, lastName: data.last_name, displayName: data.display_name, email: session.user.email || '' };
+    setProfile(next);
+    setUserName(cleanFirst);
+    return next;
+  };
 
   // Toast notifications — ephemeral, for user feedback on actions
   const [toast, setToast] = useState(null); // { message, type, id }
@@ -254,7 +276,7 @@ export function AppProvider({ children }) {
     timezone, setTimezone,
     favorites, toggleFavorite, isFavorite,
     toast,
-    userName, setUserName,
+    userName, setUserName, profile, updateProfile,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

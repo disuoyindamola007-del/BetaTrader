@@ -7,8 +7,11 @@ import { getAlerts } from '../../services/alertsService.js';
 import { requestNotificationPermission, TIMEZONE_OPTIONS } from '../../services/settingsService.js';
 
 export default function ProfileScreen() {
-  const { darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, userName, timezone, setTimezone, signOut } = useApp();
+  const { darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, userName, timezone, setTimezone, signOut, profile, updateProfile } = useApp();
   const [toast, setToast] = useState(null);
+  const [showPersonalInfo, setShowPersonalInfo] = useState(false);
+  const [personalInfo, setPersonalInfo] = useState({ firstName: '', lastName: '', displayName: '' });
+  const [savingProfile, setSavingProfile] = useState(false);
   const [showTimezonePicker, setShowTimezonePicker] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -55,13 +58,34 @@ export default function ProfileScreen() {
     }
   };
 
+  const openPersonalInfo = () => {
+    setPersonalInfo({ firstName: profile.firstName || '', lastName: profile.lastName || '', displayName: profile.displayName || '' });
+    setToast(null);
+    setShowPersonalInfo(true);
+  };
+
+  const savePersonalInfo = async event => {
+    event.preventDefault();
+    setSavingProfile(true);
+    setToast(null);
+    try {
+      await updateProfile(personalInfo);
+      setShowPersonalInfo(false);
+      setToast('Personal information updated.');
+      setTimeout(() => setToast(null), 2500);
+    } catch (error) {
+      setToast(error.message || 'Could not update your information.');
+      setTimeout(() => setToast(null), 3000);
+    } finally { setSavingProfile(false); }
+  };
+
   const chooseTimezone = value => {
     setTimezone(value);
     setShowTimezonePicker(false);
   };
 
   const menuItems = [
-    { icon: User, label: 'Personal Information', action: () => showComingSoon('Personal Information') },
+    { icon: User, label: 'Personal Information', action: openPersonalInfo },
     { icon: Wallet, label: 'Subscription', badge: 'Free', action: () => showComingSoon('Subscription management') },
     { icon: Bell, label: 'Notifications', toggle: true, value: notificationsEnabled, action: handleNotificationsToggle },
     { icon: Moon, label: darkMode ? 'Dark Mode' : 'Light Mode', toggle: true, value: darkMode, action: () => setDarkMode(!darkMode) },
@@ -185,6 +209,19 @@ export default function ProfileScreen() {
           </div>
         </div>,
         document.body
+      )}
+
+      {showPersonalInfo && createPortal(
+        <div className="fixed inset-0 z-[2000] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => !savingProfile && setShowPersonalInfo(false)}>
+          <form onSubmit={savePersonalInfo} className="w-full max-w-md theme-bg-secondary rounded-t-2xl sm:rounded-2xl border theme-border p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4"><div><h2 className="font-bold theme-text-primary">Personal Information</h2><p className="text-xs theme-text-secondary mt-1">Update the name shown on your account.</p></div><button type="button" onClick={() => setShowPersonalInfo(false)} disabled={savingProfile} className="p-2 theme-text-secondary"><X size={18} /></button></div>
+            <label className="block text-xs theme-text-secondary mb-3">First name<input required maxLength={80} value={personalInfo.firstName} onChange={event => setPersonalInfo(current => ({ ...current, firstName: event.target.value }))} className="input-field mt-1" autoComplete="given-name" /></label>
+            <label className="block text-xs theme-text-secondary mb-3">Last name<input required maxLength={80} value={personalInfo.lastName} onChange={event => setPersonalInfo(current => ({ ...current, lastName: event.target.value }))} className="input-field mt-1" autoComplete="family-name" /></label>
+            <label className="block text-xs theme-text-secondary mb-4">Display name <span className="normal-case tracking-normal">(optional)</span><input maxLength={160} value={personalInfo.displayName} onChange={event => setPersonalInfo(current => ({ ...current, displayName: event.target.value }))} className="input-field mt-1" autoComplete="nickname" /></label>
+            <p className="text-xs theme-text-secondary mb-4">Email: <span className="theme-text-primary">{profile.email || 'Unavailable'}</span></p>
+            <button disabled={savingProfile} className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-60">{savingProfile && <Loader2 size={16} className="animate-spin" />}{savingProfile ? 'Saving…' : 'Save changes'}</button>
+          </form>
+        </div>, document.body
       )}
 
       <p className="text-center text-[10px] text-slate-600 mt-6">BetaTrader v2.0.0</p>
