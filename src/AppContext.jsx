@@ -6,9 +6,9 @@ import { setStorageUser } from './services/userStorageScope.js';
 
 const AppContext = createContext();
 
-function getSessionFirstName(session) {
+function getSessionName(session) {
   const metadata = session?.user?.user_metadata;
-  return metadata?.first_name || metadata?.display_name?.trim()?.split(/\s+/)[0] || null;
+  return metadata?.display_name?.trim() || metadata?.first_name || null;
 }
 
 export function AppProvider({ children }) {
@@ -21,7 +21,7 @@ export function AppProvider({ children }) {
     supabase.auth.getSession().then(({ data }) => {
       if (mounted) {
         setStorageUser(data.session?.user?.id);
-        setUserName(getSessionFirstName(data.session));
+        setUserName(getSessionName(data.session));
         setSession(data.session);
         setFavorites(getFavorites());
         setAuthLoading(false);
@@ -30,7 +30,7 @@ export function AppProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (mounted) {
         setStorageUser(nextSession?.user?.id);
-        setUserName(getSessionFirstName(nextSession));
+        setUserName(getSessionName(nextSession));
         setSession(nextSession);
         setFavorites(getFavorites());
         setAuthLoading(false);
@@ -162,7 +162,7 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!supabase || !session?.user?.id) { setUserName(null); setProfile({ firstName: '', lastName: '', displayName: '', email: '' }); return; }
     let active = true;
-    const sessionName = getSessionFirstName(session);
+    const sessionName = getSessionName(session);
     if (sessionName) setUserName(sessionName);
     setProfile(current => ({ ...current, email: session.user.email || '' }));
     supabase.from('profiles').select('first_name, last_name, display_name').eq('user_id', session.user.id).single()
@@ -172,7 +172,9 @@ export function AppProvider({ children }) {
         const lastName = data?.last_name || session.user.user_metadata?.last_name || '';
         const displayName = data?.display_name || [firstName, lastName].filter(Boolean).join(' ');
         setProfile({ firstName, lastName, displayName, email: session.user.email || '' });
-        setUserName(firstName || displayName.trim().split(/\s+/)[0] || 'Trader');
+        // A user-entered username/display name takes precedence on Home;
+        // otherwise use the person's first name.
+        setUserName(displayName.trim() || firstName || 'Trader');
       });
     return () => { active = false; };
   }, [session?.user?.id]);
