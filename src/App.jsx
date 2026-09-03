@@ -40,11 +40,11 @@ function AuthCallbackScreen() {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
         } else {
-          // Supabase detects hash tokens automatically through detectSessionInUrl.
-          await new Promise(resolve => setTimeout(resolve, 500));
-          const { data, error } = await supabase.auth.getSession();
+          const accessToken = hash.get('access_token');
+          const refreshToken = hash.get('refresh_token');
+          if (!accessToken || !refreshToken) throw new Error('This verification link is invalid or has expired.');
+          const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
           if (error) throw error;
-          if (!data.session) throw new Error('This verification link is invalid or has expired.');
         }
         await supabase.auth.signOut();
         window.history.replaceState({}, '', window.location.pathname);

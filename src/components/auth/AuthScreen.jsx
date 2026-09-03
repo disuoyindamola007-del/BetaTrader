@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Eye, EyeOff, Loader2, Mail, Lock, UserPlus, LogIn, CheckCircle } from 'lucide-react';
+import { Check, Eye, EyeOff, Loader2, Mail, Lock, UserPlus, LogIn, CheckCircle, Sparkles } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient.js';
 
 const passwordRules = [
@@ -108,7 +108,7 @@ export default function AuthScreen() {
     <main className="min-h-screen theme-bg-primary flex items-center justify-center px-5 py-5">
       <div className="w-full max-w-md -translate-y-2 animate-fade-in">
         <div className="text-center mb-4">
-          <img src="/icons/icon-192.png" alt="BetaTrader" className="w-14 h-14 mx-auto mb-2 rounded-2xl shadow-lg shadow-emerald-500/20" />
+          <div aria-label="BetaTrader" className="w-14 h-14 mx-auto mb-2 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20"><Sparkles size={27} className="text-white" /></div>
           <h1 className="text-2xl font-extrabold theme-text-primary">Welcome to BetaTrader</h1>
           <p className="text-sm theme-text-secondary mt-1">Your trading companion, securely synced.</p>
         </div>

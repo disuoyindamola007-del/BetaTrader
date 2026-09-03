@@ -11,7 +11,9 @@ export const supabase = isSupabaseConfigured
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        // Callback credentials are processed explicitly in App.jsx so the UI
+        // can always show success, expiry, or failure instead of racing auth state.
+        detectSessionInUrl: false,
       },
     })
   : null;
