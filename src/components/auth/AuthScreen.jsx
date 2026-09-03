@@ -36,6 +36,7 @@ export default function AuthScreen({ initialMode = 'sign-in' }) {
     const params = new URLSearchParams(window.location.search);
     const notice = params.get('notice');
     if (notice === 'email-confirmed') setMessage({ type: 'success', text: 'Email confirmed. Please sign in.' });
+    if (notice === 'password-updated') setMessage({ type: 'success', text: 'Your password was updated. Please sign in with your new password.' });
     if (notice === 'link-expired') setMessage({ type: 'error', text: 'That verification link expired. Sign in to continue. If your email is still unverified, we will send a new link.' });
     if (notice) window.history.replaceState({}, '', window.location.pathname);
   }, []);
@@ -92,10 +93,10 @@ export default function AuthScreen({ initialMode = 'sign-in' }) {
         const { error } = await supabase.auth.updateUser({ password });
         if (error) throw error;
         await supabase.auth.signOut();
-        setMode('sign-in');
-        setPassword('');
-        setConfirmPassword('');
-        setMessage({ type: 'success', text: 'Your password was updated. Please sign in with your new password.' });
+        // Start a clean auth experience after recovery. This avoids leaving
+        // the recovery callback/session state mounted over the sign-in form.
+        window.location.replace('/?notice=password-updated');
+        return;
       } else if (mode === 'sign-in') {
         const result = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
         if (result.error) {
@@ -138,7 +139,7 @@ export default function AuthScreen({ initialMode = 'sign-in' }) {
           <p className="text-sm theme-text-secondary mt-1">{mode === 'forgot' ? 'We’ll email you a secure reset link.' : mode === 'reset' ? 'Create a new password for your account.' : 'Your trading companion, securely synced.'}</p>
         </div>
         <form onSubmit={submit} className="glass-card p-5 space-y-3">
-          {mode !== 'reset' && <div className="flex gap-2 p-1 rounded-xl theme-bg-secondary">
+          {mode !== 'forgot' && mode !== 'reset' && <div className="flex gap-2 p-1 rounded-xl theme-bg-secondary">
             <button type="button" onClick={() => switchMode('sign-in')} className={`flex-1 py-2 rounded-lg text-sm font-semibold ${mode === 'sign-in' ? 'bg-emerald-500 text-white' : 'theme-text-secondary'}`}><LogIn size={15} className="inline mr-1" />Sign in</button>
             <button type="button" onClick={() => switchMode('sign-up')} className={`flex-1 py-2 rounded-lg text-sm font-semibold ${mode === 'sign-up' ? 'bg-emerald-500 text-white' : 'theme-text-secondary'}`}><UserPlus size={15} className="inline mr-1" />Create account</button>
           </div>}
