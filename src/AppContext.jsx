@@ -165,13 +165,19 @@ export function AppProvider({ children }) {
     const sessionName = getSessionName(session);
     if (sessionName) setUserName(sessionName);
     setProfile(current => ({ ...current, email: session.user.email || '' }));
-    supabase.from('profiles').select('first_name, last_name, display_name').eq('user_id', session.user.id).single()
+    supabase.from('profiles').select('first_name, last_name, display_name, timezone, notifications_enabled, dark_mode').eq('user_id', session.user.id).single()
       .then(({ data }) => {
         if (!active) return;
         const firstName = data?.first_name || sessionName || '';
         const lastName = data?.last_name || session.user.user_metadata?.last_name || '';
         const displayName = data?.display_name || [firstName, lastName].filter(Boolean).join(' ');
         setProfile({ firstName, lastName, displayName, email: session.user.email || '' });
+        setSettings(current => ({
+          ...current,
+          timezone: data?.timezone || current.timezone,
+          notificationsEnabled: data?.notifications_enabled ?? current.notificationsEnabled,
+          darkMode: data?.dark_mode ?? current.darkMode,
+        }));
         // A user-entered username/display name takes precedence on Home;
         // otherwise use the person's first name.
         setUserName(displayName.trim() || firstName || 'Trader');
@@ -183,12 +189,28 @@ export function AppProvider({ children }) {
   // kept its own disconnected local state for darkMode, which meant the
   // toggle changed nothing anywhere else in the app).
   const [settings, setSettings] = useState(() => getSettings());
+  const syncSettingsToCloud = (changes) => {
+    if (!supabase || !session?.user?.id) return;
+    supabase.from('profiles').update(changes).eq('user_id', session.user.id)
+      .then(({ error }) => {
+        if (error) console.error('[profile] Preference sync failed:', error.message);
+      });
+  };
   const darkMode = settings.darkMode;
-  const setDarkMode = (value) => setSettings(updateSetting('darkMode', value));
+  const setDarkMode = (value) => {
+    setSettings(updateSetting('darkMode', value));
+    syncSettingsToCloud({ dark_mode: value });
+  };
   const notificationsEnabled = settings.notificationsEnabled;
-  const setNotificationsEnabled = (value) => setSettings(updateSetting('notificationsEnabled', value));
+  const setNotificationsEnabled = (value) => {
+    setSettings(updateSetting('notificationsEnabled', value));
+    syncSettingsToCloud({ notifications_enabled: value });
+  };
   const timezone = settings.timezone || 'UTC';
-  const setTimezone = (value) => setSettings(updateSetting('timezone', value));
+  const setTimezone = (value) => {
+    setSettings(updateSetting('timezone', value));
+    syncSettingsToCloud({ timezone: value });
+  };
 
   const updateProfile = async ({ firstName, lastName, displayName }) => {
     if (!supabase || !session?.user?.id) throw new Error('You must be signed in to edit your profile.');
@@ -202,7 +224,7 @@ export function AppProvider({ children }) {
     await supabase.auth.updateUser({ data: { first_name: cleanFirst, last_name: cleanLast, display_name: cleanDisplay } });
     const next = { firstName: data.first_name, lastName: data.last_name, displayName: data.display_name, email: session.user.email || '' };
     setProfile(next);
-    setUserName(cleanFirst);
+    setUserName(cleanDisplay || cleanFirst);
     return next;
   };
 
