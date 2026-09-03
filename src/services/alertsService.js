@@ -2,12 +2,13 @@
 // Storage: localStorage (client-only, per-device). No backend yet —
 // this is intentionally simple so it can be swapped for a real
 // backend in Batch 6/7 without changing the AlertsScreen call sites.
+import { scopedStorageKey } from './userStorageScope.js';
 
 const STORAGE_KEY = 'betatrader:alerts:v1';
 
 function loadAlerts() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -19,7 +20,7 @@ function loadAlerts() {
 
 function saveAlerts(alerts) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
+    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(alerts));
   } catch (err) {
     console.error('[alertsService] Failed to save alerts to storage:', err.message);
   }

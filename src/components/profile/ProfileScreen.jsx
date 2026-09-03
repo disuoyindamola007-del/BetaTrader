@@ -1,13 +1,15 @@
 import { useState, useMemo } from 'react';
-import { User, Moon, Bell, Shield, HelpCircle, LogOut, ChevronRight, Wallet, X, Globe } from 'lucide-react';
+import { User, Moon, Bell, Shield, HelpCircle, LogOut, ChevronRight, Wallet, X, Globe, Check, Loader2 } from 'lucide-react';
 import { useApp } from '../../AppContext.jsx';
 import { getTrades } from '../../services/journalService.js';
 import { getAlerts } from '../../services/alertsService.js';
 import { requestNotificationPermission, TIMEZONE_OPTIONS } from '../../services/settingsService.js';
 
 export default function ProfileScreen() {
-  const { darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, userName, timezone, setTimezone } = useApp();
+  const { darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, userName, timezone, setTimezone, signOut } = useApp();
   const [toast, setToast] = useState(null);
+  const [showTimezonePicker, setShowTimezonePicker] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Real stats — computed live from actual persisted journal/alerts data,
   // not hardcoded placeholders.
@@ -41,15 +43,28 @@ export default function ProfileScreen() {
     setNotificationsEnabled(next);
   };
 
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } catch {
+      setToast('Could not log out. Check your connection and try again.');
+      setTimeout(() => setToast(null), 2500);
+      setSigningOut(false);
+    }
+  };
+
+  const chooseTimezone = value => {
+    setTimezone(value);
+    setShowTimezonePicker(false);
+  };
+
   const menuItems = [
     { icon: User, label: 'Personal Information', action: () => showComingSoon('Personal Information') },
     { icon: Wallet, label: 'Subscription', badge: 'Free', action: () => showComingSoon('Subscription management') },
     { icon: Bell, label: 'Notifications', toggle: true, value: notificationsEnabled, action: handleNotificationsToggle },
     { icon: Moon, label: darkMode ? 'Dark Mode' : 'Light Mode', toggle: true, value: darkMode, action: () => setDarkMode(!darkMode) },
-    { icon: Globe, label: 'Time Zone', value: timezone, action: () => {
-      const nextIdx = (TIMEZONE_OPTIONS.findIndex(t => t.value === timezone) + 1) % TIMEZONE_OPTIONS.length;
-      setTimezone(TIMEZONE_OPTIONS[nextIdx].value);
-    }, note: `Current: ${TIMEZONE_OPTIONS.find(t => t.value === timezone)?.label || timezone}` },
+    { icon: Globe, label: 'Time Zone', value: timezone, action: () => setShowTimezonePicker(true), note: `Current: ${TIMEZONE_OPTIONS.find(t => t.value === timezone)?.label || timezone}` },
     { icon: Shield, label: 'Security', action: () => showComingSoon('Security settings') },
     { icon: HelpCircle, label: 'Help & Support', action: () => showComingSoon('Help & Support') },
   ];
@@ -143,12 +158,32 @@ export default function ProfileScreen() {
       </div>
 
       <button
-        onClick={() => showComingSoon('Log Out')}
-        className="w-full mt-4 btn-secondary text-red-400 border-red-500/20 hover:bg-red-500/10 flex items-center justify-center gap-2"
+        onClick={handleSignOut}
+        disabled={signingOut}
+        className="w-full mt-4 btn-secondary text-red-400 border-red-500/20 hover:bg-red-500/10 flex items-center justify-center gap-2 disabled:opacity-60"
       >
-        <LogOut size={16} />
-        Log Out
+        {signingOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+        {signingOut ? 'Logging out…' : 'Log Out'}
       </button>
+
+      {showTimezonePicker && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setShowTimezonePicker(false)}>
+          <div className="w-full max-w-md theme-bg-secondary rounded-t-2xl sm:rounded-2xl border theme-border p-4 max-h-[75vh] overflow-y-auto" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div><h2 className="font-bold theme-text-primary">Select time zone</h2><p className="text-xs theme-text-secondary">Times and greetings will use this zone.</p></div>
+              <button onClick={() => setShowTimezonePicker(false)} className="p-2 theme-text-secondary"><X size={18} /></button>
+            </div>
+            <div className="space-y-1">
+              {TIMEZONE_OPTIONS.map(option => (
+                <button key={option.value} onClick={() => chooseTimezone(option.value)} className={`w-full p-3 rounded-xl flex items-center justify-between text-left ${timezone === option.value ? 'bg-emerald-500/15 text-emerald-400' : 'theme-bg-tertiary theme-text-primary'}`}>
+                  <span className="text-sm font-medium">{option.label}</span>
+                  {timezone === option.value && <Check size={17} />}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <p className="text-center text-[10px] text-slate-600 mt-6">BetaTrader v2.0.0</p>
     </div>

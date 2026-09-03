@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSettings, updateSetting } from './services/settingsService.js';
 import { getFavorites, toggleFavorite as toggleFavoriteInStorage } from './services/favoritesService.js';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient.js';
+import { setStorageUser } from './services/userStorageScope.js';
 
 const AppContext = createContext();
 
@@ -13,17 +14,35 @@ export function AppProvider({ children }) {
     if (!supabase) return undefined;
     let mounted = true;
     supabase.auth.getSession().then(({ data }) => {
-      if (mounted) { setSession(data.session); setAuthLoading(false); }
+      if (mounted) {
+        setStorageUser(data.session?.user?.id);
+        setSession(data.session);
+        setFavorites(getFavorites());
+        setAuthLoading(false);
+      }
     }).catch(() => { if (mounted) setAuthLoading(false); });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (mounted) { setSession(nextSession); setAuthLoading(false); }
+      if (mounted) {
+        setStorageUser(nextSession?.user?.id);
+        setSession(nextSession);
+        setFavorites(getFavorites());
+        setAuthLoading(false);
+      }
     });
     return () => { mounted = false; listener.subscription.unsubscribe(); };
   }, []);
 
   const signOut = async () => {
-    if (supabase) await supabase.auth.signOut();
+    if (!supabase) { setSession(null); return; }
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    setStorageUser(null);
     setSession(null);
+    setFavorites([]);
+    setSelectedAsset(null);
+    setSelectedNews(null);
+    setSelectedPulseMetric(null);
+    setActiveTab('home');
   };
 
   const [activeTab, setActiveTab] = useState(() => {

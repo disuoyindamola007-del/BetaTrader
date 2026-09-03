@@ -1,12 +1,13 @@
 // favoritesService — persistence for favorited/watchlisted assets.
 // Storage: localStorage (client-only, per-device), same pattern as
 // alertsService.js and journalService.js.
+import { scopedStorageKey } from './userStorageScope.js';
 
 const STORAGE_KEY = 'betatrader:favorites:v1';
 
 function loadFavorites() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -18,7 +19,7 @@ function loadFavorites() {
 
 function saveFavorites(symbols) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols));
+    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(symbols));
   } catch (err) {
     console.error('[favoritesService] Failed to save favorites to storage:', err.message);
   }

@@ -36,7 +36,7 @@ export default function AuthScreen() {
     const params = new URLSearchParams(window.location.search);
     const notice = params.get('notice');
     if (notice === 'email-confirmed') setMessage({ type: 'success', text: 'Email confirmed. Please sign in.' });
-    if (notice === 'link-expired') setMessage({ type: 'error', text: 'That verification link expired. Sign in to receive a new verification email.' });
+    if (notice === 'link-expired') setMessage({ type: 'error', text: 'That verification link expired. Sign in to continue. If your email is still unverified, we will send a new link.' });
     if (notice) window.history.replaceState({}, '', window.location.pathname);
   }, []);
 

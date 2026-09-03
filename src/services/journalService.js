@@ -2,12 +2,13 @@
 // Storage: localStorage (client-only, per-device), same pattern as
 // alertsService.js. Swappable for a real backend in Batch 6/7 without
 // changing JournalScreen's call sites.
+import { scopedStorageKey } from './userStorageScope.js';
 
 const STORAGE_KEY = 'betatrader:journal:v1';
 
 function loadTrades() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -19,7 +20,7 @@ function loadTrades() {
 
 function saveTrades(trades) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trades));
+    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(trades));
   } catch (err) {
     console.error('[journalService] Failed to save trades to storage:', err.message);
   }

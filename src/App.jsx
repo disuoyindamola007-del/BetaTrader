@@ -62,7 +62,7 @@ function AuthCallbackScreen() {
   useEffect(() => {
     if (!state.expired) return undefined;
     const timer = setTimeout(() => {
-      try { sessionStorage.setItem('betatrader:authNotice', 'Your verification link expired. A new link will be sent when you sign in.'); } catch { /* ignore */ }
+      try { sessionStorage.setItem('betatrader:authNotice', 'Your verification link expired. Sign in to continue. If your email is still unverified, we will send a new link.'); } catch { /* ignore */ }
       window.location.replace('/');
     }, 3500);
     return () => clearTimeout(timer);
