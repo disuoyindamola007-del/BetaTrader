@@ -131,6 +131,19 @@ export function AppProvider({ children }) {
   }, [journalView]);
   const [userName, setUserName] = useState('Trader');
 
+  // Load the authenticated profile so greetings use the user's real first name.
+  useEffect(() => {
+    if (!supabase || !session?.user?.id) { setUserName('Trader'); return; }
+    let active = true;
+    supabase.from('profiles').select('first_name, display_name').eq('user_id', session.user.id).single()
+      .then(({ data }) => {
+        if (!active) return;
+        const metadataName = session.user.user_metadata?.first_name;
+        setUserName(data?.first_name || metadataName || data?.display_name?.split(' ')[0] || 'Trader');
+      });
+    return () => { active = false; };
+  }, [session?.user?.id]);
+
   // Persisted settings — single source of truth (previously ProfileScreen
   // kept its own disconnected local state for darkMode, which meant the
   // toggle changed nothing anywhere else in the app).
