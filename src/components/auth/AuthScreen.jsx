@@ -26,6 +26,7 @@ export default function AuthScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(consumeAuthNotice);
   const ruleState = useMemo(() => passwordRules.map(rule => ({ ...rule, passed: rule.test(password) })), [password]);
@@ -44,6 +45,8 @@ export default function AuthScreen() {
     setMessage(null);
     setPassword('');
     setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
   };
 
   const resendVerification = async cleanEmail => {
@@ -89,7 +92,7 @@ export default function AuthScreen() {
           },
         });
         if (error) throw error;
-        setMessage({ type: 'success', text: 'Account created. A verification link has been sent to your email and expires in 3 hours.' });
+        setMessage({ type: 'success', text: 'Account created. A verification link has been sent to your email.' });
       }
     } catch (error) {
       const text = /invalid login credentials/i.test(error.message || '')
@@ -118,11 +121,10 @@ export default function AuthScreen() {
           {mode === 'sign-up' && <div className="grid grid-cols-2 gap-2"><label className="text-sm theme-text-secondary">First name<input required value={firstName} onChange={e => setFirstName(e.target.value)} maxLength={80} className="input-field mt-1" autoComplete="given-name" /></label><label className="text-sm theme-text-secondary">Last name<input required value={lastName} onChange={e => setLastName(e.target.value)} maxLength={80} className="input-field mt-1" autoComplete="family-name" /></label></div>}
           <label className="block text-sm theme-text-secondary">Email<div className="relative mt-1"><Mail size={16} className="absolute left-3 top-3 text-slate-500" /><input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="input-field pl-9" autoComplete="email" /></div></label>
           <label className="block text-sm theme-text-secondary">Password<div className="relative mt-1"><Lock size={16} className="absolute left-3 top-3 text-slate-500" /><input required type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} className="input-field pl-9 pr-10" autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(value => !value)} className="absolute right-3 top-2.5 text-slate-500">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>
-          {mode === 'sign-up' && <><div className="grid grid-cols-2 gap-x-2 gap-y-1">{ruleState.map(rule => <span key={rule.key} className={`text-[10px] flex items-center gap-1 ${rule.passed ? 'text-emerald-400' : 'theme-text-muted'}`}><span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${rule.passed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-600'}`}>{rule.passed && <Check size={10} />}</span>{rule.label}</span>)}</div><label className="block text-sm theme-text-secondary">Confirm password<div className="relative mt-1"><Lock size={16} className="absolute left-3 top-3 text-slate-500" /><input required type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="input-field pl-9" autoComplete="new-password" /></div>{confirmPassword && <span className={`block text-[10px] mt-1 ${password === confirmPassword ? 'text-emerald-400' : 'text-red-400'}`}>{password === confirmPassword ? 'Passwords match' : 'Passwords do not match'}</span>}</label></>}
+          {mode === 'sign-up' && <><div className="grid grid-cols-2 gap-x-2 gap-y-1">{ruleState.map(rule => <span key={rule.key} className={`text-[10px] flex items-center gap-1 ${rule.passed ? 'text-emerald-400' : 'theme-text-muted'}`}><span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${rule.passed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-600'}`}>{rule.passed && <Check size={10} />}</span>{rule.label}</span>)}</div><label className="block text-sm theme-text-secondary">Confirm password<div className="relative mt-1"><Lock size={16} className="absolute left-3 top-3 text-slate-500" /><input required type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="input-field pl-9 pr-10" autoComplete="new-password" /><button type="button" aria-label={showConfirmPassword ? 'Hide confirmed password' : 'Show confirmed password'} onClick={() => setShowConfirmPassword(value => !value)} className="absolute right-3 top-2.5 text-slate-500">{showConfirmPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>{confirmPassword && <span className={`block text-[10px] mt-1 ${password === confirmPassword ? 'text-emerald-400' : 'text-red-400'}`}>{password === confirmPassword ? 'Passwords match' : 'Passwords do not match'}</span>}</label></>}
           <button disabled={busy} className="w-full btn-primary flex justify-center items-center gap-2 disabled:opacity-60">{busy && <Loader2 size={16} className="animate-spin" />}{mode === 'sign-in' ? 'Sign in securely' : 'Create secure account'}</button>
           {mode === 'sign-in' && <button type="button" onClick={() => setMessage({ type: 'info', text: 'Password recovery is coming next.' })} className="w-full text-xs text-emerald-400">Forgot password?</button>}
         </form>
-        <p className="text-center text-[11px] theme-text-muted mt-3">Your data is private and secure.</p>
       </div>
     </main>
   );
