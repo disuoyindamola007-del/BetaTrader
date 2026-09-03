@@ -81,8 +81,17 @@ function AuthCallbackScreen() {
 }
 
 function AppContent() {
-  const { activeTab, selectedAsset, selectedNews, selectedPulseMetric, darkMode, authLoading, isAuthenticated } = useApp();
+  const { activeTab, setActiveTab, selectedAsset, selectedNews, selectedPulseMetric, darkMode, authLoading, isAuthenticated } = useApp();
   const [authCallback] = useState(isAuthCallbackUrl);
+
+  // This is a single-page app without client-side URL routes. Send direct
+  // visits to unknown paths to the correct entry screen instead of allowing
+  // Vercel/browser 404 pages to leak through.
+  useEffect(() => {
+    if (authCallback || authLoading || window.location.pathname === '/') return;
+    if (isAuthenticated) setActiveTab('home');
+    window.history.replaceState({}, '', '/');
+  }, [authCallback, authLoading, isAuthenticated, setActiveTab]);
 
   // Sync theme class to html element (like reference project)
   useEffect(() => {
