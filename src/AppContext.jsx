@@ -6,6 +6,11 @@ import { setStorageUser } from './services/userStorageScope.js';
 
 const AppContext = createContext();
 
+function getSessionFirstName(session) {
+  const metadata = session?.user?.user_metadata;
+  return metadata?.first_name || metadata?.display_name?.trim()?.split(/\s+/)[0] || null;
+}
+
 export function AppProvider({ children }) {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
@@ -16,6 +21,7 @@ export function AppProvider({ children }) {
     supabase.auth.getSession().then(({ data }) => {
       if (mounted) {
         setStorageUser(data.session?.user?.id);
+        setUserName(getSessionFirstName(data.session));
         setSession(data.session);
         setFavorites(getFavorites());
         setAuthLoading(false);
@@ -24,6 +30,7 @@ export function AppProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (mounted) {
         setStorageUser(nextSession?.user?.id);
+        setUserName(getSessionFirstName(nextSession));
         setSession(nextSession);
         setFavorites(getFavorites());
         setAuthLoading(false);
@@ -148,17 +155,18 @@ export function AppProvider({ children }) {
       localStorage.setItem('betatrader:journalView', journalView);
     } catch { /* ignore */ }
   }, [journalView]);
-  const [userName, setUserName] = useState('Trader');
+  const [userName, setUserName] = useState(null);
 
   // Load the authenticated profile so greetings use the user's real first name.
   useEffect(() => {
-    if (!supabase || !session?.user?.id) { setUserName('Trader'); return; }
+    if (!supabase || !session?.user?.id) { setUserName(null); return; }
     let active = true;
+    const sessionName = getSessionFirstName(session);
+    if (sessionName) setUserName(sessionName);
     supabase.from('profiles').select('first_name, display_name').eq('user_id', session.user.id).single()
       .then(({ data }) => {
         if (!active) return;
-        const metadataName = session.user.user_metadata?.first_name;
-        setUserName(data?.first_name || metadataName || data?.display_name?.split(' ')[0] || 'Trader');
+        setUserName(data?.first_name || data?.display_name?.trim()?.split(/\s+/)[0] || sessionName || 'Trader');
       });
     return () => { active = false; };
   }, [session?.user?.id]);
