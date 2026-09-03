@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { User, Moon, Bell, Shield, HelpCircle, LogOut, ChevronRight, Wallet, X, Globe, Check, Loader2 } from 'lucide-react';
 import { useApp } from '../../AppContext.jsx';
 import { getTrades } from '../../services/journalService.js';
@@ -166,14 +167,14 @@ export default function ProfileScreen() {
         {signingOut ? 'Logging out…' : 'Log Out'}
       </button>
 
-      {showTimezonePicker && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setShowTimezonePicker(false)}>
-          <div className="w-full max-w-md theme-bg-secondary rounded-t-2xl sm:rounded-2xl border theme-border p-4 max-h-[75vh] overflow-y-auto" onClick={event => event.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
+      {showTimezonePicker && createPortal(
+        <div className="fixed inset-0 z-[2000] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setShowTimezonePicker(false)}>
+          <div className="w-full max-w-md theme-bg-secondary rounded-t-2xl sm:rounded-2xl border theme-border p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] max-h-[calc(100dvh-1rem)] sm:max-h-[75vh] flex flex-col" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3 shrink-0">
               <div><h2 className="font-bold theme-text-primary">Select time zone</h2><p className="text-xs theme-text-secondary">Times and greetings will use this zone.</p></div>
               <button onClick={() => setShowTimezonePicker(false)} className="p-2 theme-text-secondary"><X size={18} /></button>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 overflow-y-auto overscroll-contain pb-2">
               {TIMEZONE_OPTIONS.map(option => (
                 <button key={option.value} onClick={() => chooseTimezone(option.value)} className={`w-full p-3 rounded-xl flex items-center justify-between text-left ${timezone === option.value ? 'bg-emerald-500/15 text-emerald-400' : 'theme-bg-tertiary theme-text-primary'}`}>
                   <span className="text-sm font-medium">{option.label}</span>
@@ -182,7 +183,8 @@ export default function ProfileScreen() {
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <p className="text-center text-[10px] text-slate-600 mt-6">BetaTrader v2.0.0</p>

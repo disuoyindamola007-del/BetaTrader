@@ -19,6 +19,12 @@ A mobile-first trading companion app. Not a brokerage — it's an information an
 - Personalized home dashboard (briefing, watchlist, trending, news, economic calendar)
 - Universal symbol search
 
+## Current Phase 8 status (Sep 3, 2026)
+
+Phase 8 authentication is underway. Supabase Auth and the initial user-owned schema are live in the BetaTrader project only (`incciljsxgujwltugdcj`). Email/password signup captures first/last name, validates password composition and confirmation, creates profiles through a locked-down trigger, handles confirmation callbacks/expired links, restores sessions, signs out, and gates private screens. Owner-only RLS is enabled on profiles, favorites, journal trades, alerts, and notifications. Same-device local favorites/journal/alerts are additionally scoped by authenticated user ID.
+
+Latest verified work through commit `4ccbda4` plus pending timezone modal fix: authenticated first-name greeting without refresh flicker; real logout; timezone selection sheet; network-first PWA navigation for auth callbacks. Cloud repositories, explicit local-to-cloud import, profile editing/settings sync, recovery/reset, account deletion/export, and two-account RLS/multi-device verification remain open. Do not mark Phase 8 complete.
+
 **Target launch sequence (team's own phased plan):**
 1. Core screens fully functional (search, asset detail, markets, analyze, alerts, journal)
 2. Backend hardened (timeouts, retry/backoff, per-provider rate limiting, structured logging, no cascading failures)
@@ -88,7 +94,7 @@ All market data flows through `src/services/marketDataService.js` (single entry 
 | AI Analysis | ✅ Real | Groq LLM call, proper loading/error/rate-limit states |
 | Journal | ✅ Real | localStorage-backed, 3-step wizard, live-computed performance stats (win rate, avg win/loss, best/worst trade) |
 | Alerts | ✅ Real | localStorage-backed, live price-triggering against real quotes, auto-flips to "triggered" |
-| Profile | ✅ Real (partial) | Dark mode + notifications toggles are real and wired; unbuilt features (Personal Info, Subscription, Security, Help, Log Out) show an honest "coming soon" toast instead of pretending to work |
+| Profile | ✅ Real (partial) | Authenticated first-name identity, real logout, timezone picker, dark mode, and notifications toggles are wired. Personal Info editing, cloud settings sync, Subscription, Security, and Help remain open. |
 | Search | ✅ Real | Dynamic provider-backed search is live: CoinGecko searches crypto tokens by name/symbol and preserves each token ID; Finnhub and TwelveData search stocks, forex, and commodities. Search results flow into working quote/chart routes. Assets unsupported by the current provider plan show an explicit "Unavailable on current plan" state. Implemented in commits `8ac94c3`, `82cfe7f`, and `42987c1`; production-tested with PEPE, MSFT, and EUR/USD. |
 | Home News/Briefing/Pulse | ✅ All real | News loads real Finnhub feed; AI Briefing generates from real pulse/quotes/news via Groq with 3h client cache; Market Pulse loads real CoinGecko/Alternative.me/Finnhub data. View All opens full news list; article detail shows AI News Breakdown. |
 | Economic Calendar | ⏸️ Intentionally parked | "Coming Soon" UI shipped — Finnhub's calendar endpoint is premium-only, decided not worth $10-12/mo yet |

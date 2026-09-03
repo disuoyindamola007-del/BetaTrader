@@ -232,35 +232,35 @@ Phase 8 moves BetaTrader from a single-device local experience to a secure multi
 
 ### 8.0 — Architecture and safety preparation
 
-- [ ] Confirm the correct Supabase project: BetaTrader project `incciljsxgujwltugdcj`; never modify the unrelated LearnFromOla project.
-- [ ] Audit current localStorage models and define cloud schemas for profiles/settings, favorites/watchlist, journal trades, alerts, and notifications where synchronization is required.
+- [x] Confirm the correct Supabase project: BetaTrader project `incciljsxgujwltugdcj`; never modify the unrelated LearnFromOla project. Migration was run and inspected in this project only.
+- [x] Audit current localStorage models and define cloud schemas for profiles/settings, favorites/watchlist, journal trades, alerts, and notifications where synchronization is required. `phase8-user-data.sql` creates all five user-owned tables; repositories remain local until their migration/sync phases.
 - [ ] Define local-data migration behavior before implementation: show local item counts, let the user choose import/merge/skip, prevent duplicates, and never overwrite data silently.
-- [ ] Require `user_id` ownership on every user-owned row. Never trust a client-supplied user ID; derive ownership from the authenticated Supabase session.
-- [ ] Keep user data separate from the existing server-only market cache. Do not weaken cache RLS or expose the service-role key to browser code.
+- [x] Require `user_id` ownership on every user-owned row. Owner-only RLS is enabled for select/insert/update/delete and was inspected live. Browser-local favorites, journal, and alerts are also keyed by authenticated user ID to prevent same-device account leakage.
+- [x] Keep user data separate from the existing server-only market cache. Browser auth uses only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; the service-role key remains server-only and cache RLS remains unchanged.
 - [ ] Define sign-out, account deletion, data export, recovery, rollback, and offline behavior.
 - [ ] Use a staging/test account and database backup before production migrations.
 
 ### 8.1 — Supabase Auth foundation
 
 - [ ] Configure Supabase Auth providers, email settings, and redirect URLs for Vercel production, preview, and local development.
-- [ ] Build sign-up with email/password and proper validation.
-- [ ] Build sign-in with invalid-credentials, duplicate-email, network-error, and loading states.
-- [ ] Implement email verification and resend-verification handling.
+- [x] Build sign-up with email/password and proper validation. First/last name, confirmation, and live length/uppercase/lowercase/number/symbol checks are implemented.
+- [x] Build sign-in with invalid-credentials, network/rate-limit, and loading states. Duplicate-email behavior still needs a focused live retest.
+- [x] Implement email verification and resend-verification handling. Code/hash/error callbacks, explicit confirmation UI, expiry UI/redirect, and resend for Supabase's unconfirmed-email error are implemented; live retest remains part of 8.9.
 - [ ] Implement forgot-password and secure reset-password flows.
-- [ ] Persist and restore sessions across refreshes and browser restarts.
-- [ ] Handle expired sessions and auth loading without flashing private screens.
-- [ ] Implement sign-out and clear active private UI/cache state safely.
-- [ ] Protect authenticated screens and define the unauthenticated landing/auth experience.
-- [ ] Ensure only the public Supabase URL and anon/publishable key reach the frontend; never include service-role credentials in client code or logs.
+- [x] Persist and restore sessions across refreshes and browser restarts.
+- [x] Handle auth loading without flashing private screens or the placeholder profile name. Expired-session behavior still needs a focused live test.
+- [x] Implement sign-out and clear active private UI/cache state safely.
+- [x] Protect authenticated screens and define the unauthenticated landing/auth experience.
+- [x] Ensure only the public Supabase URL and anon/publishable key reach the frontend; never include service-role credentials in client code or logs.
 
 ### 8.2 — Profiles and settings
 
-- [ ] Create a `profiles` table keyed by `user_id`, including display name, avatar/initial, timezone, plan metadata, and created/updated timestamps.
-- [ ] Create profiles securely for new users using a trigger or trusted server-side path.
-- [ ] Add RLS so a user can select and update only their own profile.
-- [ ] Replace or extend the current local user-name/settings flow with the authenticated profile, retaining a safe migration fallback.
+- [x] Create a `profiles` table keyed by `user_id`, including first/last/display name, avatar/initial, timezone, plan metadata, and created/updated timestamps.
+- [x] Create profiles securely for new users using a trigger. Live signup created the expected profile row; direct execute access to `handle_new_user()` was revoked from PUBLIC/anon/authenticated live and in migrations.
+- [x] Add RLS so a user can select and update only their own profile.
+- [x] Replace the greeting name with authenticated profile/session first name, with no `Trader` flicker on refresh.
 - [ ] Build Personal Information editing.
-- [ ] Sync timezone, notification preference, and theme settings to the user profile where appropriate.
+- [ ] Sync timezone, notification preference, and theme settings to the user profile where appropriate. Timezone picker UI is implemented, but settings are still localStorage-only.
 - [ ] Show authenticated email/account status where appropriate.
 - [ ] Keep Subscription marked Coming Soon unless billing and entitlements have a real server-side source of truth.
 
