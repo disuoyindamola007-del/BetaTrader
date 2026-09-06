@@ -35,7 +35,7 @@ export function useNotifications() {
         setUnreadCount(rows.filter(notification => !notification.read).length);
         return;
       }
-      const response = await fetch(`${API_BASE}/notifications`);
+      const response = await fetch('/api/news?mode=notifications');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       setNotifications(data.notifications || []);
