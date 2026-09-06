@@ -21,7 +21,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ notifications: [], cached: false, provider: 'none' });
   }
 
-  const cacheKey = 'notifications:latest';
+  // This legacy provider fallback is only used when the client cannot query
+  // Supabase. Keep its cache explicitly scoped rather than presenting a
+  // globally shared notification result as user data.
+  const cacheKey = `notifications:latest:${apiKey.slice(-8)}`;
   
   try {
     const cached = await get(cacheKey, NEWS_TTL_MS);
@@ -36,7 +39,7 @@ export default async function handler(req, res) {
     }
 
     // Fetch general market news
-    const url = `${FINNHUB_BASE}/news?category=general&lang=en`;
+    const url = `${FINNHUB_BASE}/news?category=general&lang=en&token=${encodeURIComponent(apiKey)}`;
     const data = await fetchJsonWithTimeout(url, {}, { provider: 'finnhub' });
     recordSuccess('finnhub');
 
