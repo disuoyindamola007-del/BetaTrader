@@ -1,5 +1,6 @@
 import { scopedStorageKey } from './userStorageScope.js';
 import { supabase } from '../lib/supabaseClient.js';
+import { reportCloudSyncError } from './cloudSyncStatus.js';
 
 const STORAGE_KEY = 'betatrader:journal:v1';
 const PENDING_KEY = 'betatrader:journal:pending:v1';
@@ -45,16 +46,20 @@ function row(trade, userId) {
     client_id: String(trade.clientId || trade.client_id || trade.id || Date.now()),
   };
 }
-function sync(promise) { promise.catch(error => console.error('[journalService] Cloud sync failed:', error.message)); }
+function sync(promise) { promise.catch(error => reportCloudSyncError('journalService', error)); }
 
 export function createTrade(trade) {
   const newTrade = { id: Date.now(), date: new Date().toISOString().slice(0, 10), ...trade };
   const updated = [newTrade, ...loadTrades()];
   saveTrades(updated);
   markPending(newTrade.id);
-  if (supabase) sync(supabase.auth.getUser().then(async ({ data }) => {
-    if (!data.user) return;
-    const { error } = await supabase.from('journal_trades').upsert(row(newTrade, data.user.id), { onConflict: 'user_id,client_id' });
+  if (supabase) sync(supabase.auth.getUser().then(async ({ data, error: authError }) => {
+    if (authError) throw authError;
+    if (!data.user) throw new Error('No authenticated user available for journal sync.');
+    // Use INSERT for the create path. A fresh client_id cannot conflict, and
+    // returning the row makes schema/RLS failures observable before clearing
+    // the local pending marker.
+    const { error } = await supabase.from('journal_trades').insert(row(newTrade, data.user.id));
     if (error) throw error;
     clearPending(newTrade.id);
   }));

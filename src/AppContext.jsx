@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getSettings, updateSetting, replaceSettings } from './services/settingsService.js';
 import { getFavorites, toggleFavorite as toggleFavoriteInStorage, hydrateFavorites } from './services/favoritesService.js';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient.js';
@@ -300,6 +300,15 @@ export function AppProvider({ children }) {
     setToast({ message, type, id });
     setTimeout(() => setToast(prev => prev?.id === id ? null : prev), duration);
   };
+
+  useEffect(() => {
+    const handleCloudSyncError = event => {
+      const label = event.detail?.service === 'favoritesService' ? 'Watchlist' : event.detail?.service === 'journalService' ? 'Journal' : 'Cloud';
+      showToast(`${label} saved on this device, but cloud sync failed: ${event.detail?.message || 'unknown error'}`, 'error', 5000);
+    };
+    window.addEventListener('betatrader:cloud-sync-error', handleCloudSyncError);
+    return () => window.removeEventListener('betatrader:cloud-sync-error', handleCloudSyncError);
+  }, []);
 
   // Favorites/watchlist — persisted per device
   const [favorites, setFavorites] = useState(() => getFavorites());

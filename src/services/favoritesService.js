@@ -1,15 +1,36 @@
 import { scopedStorageKey } from './userStorageScope.js';
 import { supabase } from '../lib/supabaseClient.js';
+import { reportCloudSyncError } from './cloudSyncStatus.js';
 
 const STORAGE_KEY = 'betatrader:favorites:v1';
+const PENDING_KEY = 'betatrader:favorites:pending:v1';
 function loadFavorites() { try { const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY)); const parsed = raw ? JSON.parse(raw) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
 function saveFavorites(symbols) { try { localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(symbols)); } catch { /* storage unavailable */ } }
+function loadPending() { try { const raw = localStorage.getItem(scopedStorageKey(PENDING_KEY)); const parsed = raw ? JSON.parse(raw) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
+function savePending(values) { try { localStorage.setItem(scopedStorageKey(PENDING_KEY), JSON.stringify(values)); } catch { /* storage unavailable */ } }
+function setPending(symbol, pending) { const values = loadPending().filter(value => value !== symbol); savePending(pending ? [...values, symbol] : values); }
 export function getFavorites() { return loadFavorites(); }
 export function isFavorite(symbol) { return Boolean(symbol && loadFavorites().includes(symbol)); }
 export function toggleFavorite(symbol) {
   if (!symbol) return loadFavorites();
-  const current = loadFavorites(); const updated = current.includes(symbol) ? current.filter(s => s !== symbol) : [...current, symbol]; saveFavorites(updated);
-  if (supabase) supabase.auth.getUser().then(({ data }) => { if (!data.user) return; if (updated.includes(symbol)) supabase.from('favorites').upsert({ user_id: data.user.id, symbol, metadata: {} }, { onConflict: 'user_id,symbol' }); else supabase.from('favorites').delete().eq('user_id', data.user.id).eq('symbol', symbol); }).catch(() => {});
+  const normalized = symbol.toUpperCase().trim();
+  const current = loadFavorites(); const updated = current.includes(normalized) ? current.filter(s => s !== normalized) : [...current, normalized]; saveFavorites(updated);
+  if (supabase) {
+    setPending(normalized, true);
+    supabase.auth.getUser().then(async ({ data, error: authError }) => {
+      if (authError) throw authError;
+      if (!data.user) {
+        setPending(normalized, false);
+        return;
+      }
+      const query = updated.includes(normalized)
+        ? supabase.from('favorites').upsert({ user_id: data.user.id, symbol: normalized, metadata: {} }, { onConflict: 'user_id,symbol' })
+        : supabase.from('favorites').delete().eq('user_id', data.user.id).eq('symbol', normalized);
+      const { error } = await query;
+      if (error) throw error;
+      setPending(normalized, false);
+    }).catch(error => reportCloudSyncError('favoritesService', error));
+  }
   return updated;
 }
 export async function hydrateFavorites() {

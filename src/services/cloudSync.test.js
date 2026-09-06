@@ -100,14 +100,14 @@ describe('favoritesService', () => {
 
 // ---- journalService -----------------------------------------------------
 describe('journalService', () => {
-  it('creates a trade locally and upserts a normalized row (buy -> long)', async () => {
+  it('creates a trade locally and inserts a normalized row (buy -> long)', async () => {
     const updated = journalService.createTrade({ asset: 'BTC', direction: 'buy', status: 'closed', entry: 100, exit: 120, assetClass: 'crypto' });
     expect(updated).toHaveLength(1);
     await flush();
-    const upsert = ops.find(o => o.table === 'journal_trades' && o.op.type === 'upsert');
-    expect(upsert.op.payload).toMatchObject({ user_id: 'user-123', asset: 'BTC', direction: 'long', category: 'crypto', status: 'closed' });
-    expect(upsert.op.payload.client_id).toBe(String(updated[0].id));
-    expect(upsert.op.options).toMatchObject({ onConflict: 'user_id,client_id' });
+    const insert = ops.find(o => o.table === 'journal_trades' && o.op.type === 'insert');
+    expect(insert).toBeTruthy();
+    expect(insert.op.payload).toMatchObject({ user_id: 'user-123', asset: 'BTC', direction: 'long', category: 'crypto', status: 'closed' });
+    expect(insert.op.payload.client_id).toBe(String(updated[0].id));
   });
 
   it('updates a trade and syncs the closed outcome to the cloud', async () => {
