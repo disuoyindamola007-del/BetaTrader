@@ -162,7 +162,7 @@ describe('alertsService', () => {
     expect(del.filters).toMatchObject({ user_id: 'user-123', client_id: String(id) });
   });
 
-  it('checkAlerts triggers when price crosses threshold and syncs status', async () => {
+  it('checkAlerts triggers, syncs status, and persists a notification', async () => {
     const created = alertsService.createAlert({ asset: 'BTC', condition: 'above', value: 100 });
     ops.length = 0;
     const result = alertsService.checkAlerts(created, { BTC: { price: 150 } });
@@ -172,6 +172,13 @@ describe('alertsService', () => {
     await flush();
     const upd = ops.find(o => o.table === 'alerts' && o.op.type === 'update');
     expect(upd.op.payload).toMatchObject({ status: 'triggered', notification_state: 'sent' });
+    const notification = ops.find(o => o.table === 'notifications' && o.op.type === 'insert');
+    expect(notification.op.payload).toMatchObject({
+      user_id: 'user-123',
+      type: 'alert_triggered',
+      title: 'BTC price alert triggered',
+      source: `alert:${created[0].id}`,
+    });
   });
 
   it('checkAlerts leaves alerts untouched when the threshold is not crossed', () => {

@@ -7,5 +7,40 @@ export function getAlerts() { return loadAlerts(); }
 function sync(promise) { promise.catch(error => console.error('[alertsService] Cloud sync failed:', error.message)); }
 export function createAlert({ asset, condition, value, provider, category }) { const newAlert = { id: Date.now(), asset: asset.toUpperCase().trim(), type: 'price', condition, value: parseFloat(value), provider: provider || null, category: category || null, status: 'active', createdAt: new Date().toISOString() }; const updated = [...loadAlerts(), newAlert]; saveAlerts(updated); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('alerts').upsert({ user_id: data.user.id, asset: newAlert.asset, condition, threshold: newAlert.value, type: 'price', provider: newAlert.provider, category: newAlert.category, status: 'active', client_id: String(newAlert.id) }, { onConflict: 'user_id,client_id' }))); return updated; }
 export function deleteAlert(id) { const updated = loadAlerts().filter(a => a.id !== id); saveAlerts(updated); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('alerts').delete().eq('user_id', data.user.id).eq('client_id', String(id)))); return updated; }
-export function checkAlerts(alerts, livePrices) { let changed = false; const newlyTriggered = []; const updated = alerts.map(alert => { if (alert.status === 'triggered') return alert; const live = livePrices[alert.asset] || livePrices[alert.asset.replace('/', '')]; if (!live || live.price == null) return alert; const hit = alert.condition === 'above' ? live.price >= alert.value : live.price <= alert.value; if (!hit) return alert; changed = true; const triggered = { ...alert, status: 'triggered', triggeredAt: new Date().toISOString() }; newlyTriggered.push(triggered); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('alerts').update({ status: 'triggered', triggered_at: triggered.triggeredAt, notification_state: 'sent' }).eq('user_id', data.user.id).eq('client_id', String(alert.id)))); return triggered; }); if (changed) saveAlerts(updated); return { alerts: updated, changed, newlyTriggered }; }
+export function checkAlerts(alerts, livePrices) {
+  let changed = false;
+  const newlyTriggered = [];
+  const updated = alerts.map(alert => {
+    if (alert.status === 'triggered') return alert;
+    const live = livePrices[alert.asset] || livePrices[alert.asset.replace('/', '')];
+    if (!live || live.price == null) return alert;
+    const hit = alert.condition === 'above' ? live.price >= alert.value : live.price <= alert.value;
+    if (!hit) return alert;
+    changed = true;
+    const triggered = { ...alert, status: 'triggered', triggeredAt: new Date().toISOString() };
+    newlyTriggered.push(triggered);
+    if (supabase) sync(supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      const clientId = String(alert.id);
+      const { error: alertError } = await supabase.from('alerts').update({
+        status: 'triggered', triggered_at: triggered.triggeredAt, notification_state: 'sent',
+      }).eq('user_id', data.user.id).eq('client_id', clientId);
+      if (alertError) throw alertError;
+      // Persist the attention event so it remains available after refresh and
+      // can be read by the user from the cloud Notifications screen.
+      const { error: notificationError } = await supabase.from('notifications').insert({
+        user_id: data.user.id,
+        type: 'alert_triggered',
+        title: `${alert.asset} price alert triggered`,
+        message: `Price is now ${alert.condition} ${alert.value}.`,
+        source: `alert:${clientId}`,
+        url: '/?tab=alerts',
+      });
+      if (notificationError) throw notificationError;
+    }));
+    return triggered;
+  });
+  if (changed) saveAlerts(updated);
+  return { alerts: updated, changed, newlyTriggered };
+}
 export async function hydrateAlerts() { if (!supabase) return loadAlerts(); const { data: auth } = await supabase.auth.getUser(); if (!auth?.user) return loadAlerts(); const { data, error } = await supabase.from('alerts').select('*').eq('user_id', auth.user.id).order('created_at', { ascending: true }); if (error) throw error; const alerts = (data || []).map(a => ({ id: a.client_id || a.id, asset: a.asset, type: a.type, condition: a.condition, value: a.threshold, provider: a.provider, category: a.category, status: a.status, triggeredAt: a.triggered_at, createdAt: a.created_at })); saveAlerts(alerts); return alerts; }
