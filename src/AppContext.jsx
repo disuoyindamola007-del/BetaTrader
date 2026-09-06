@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { getSettings, updateSetting, replaceSettings } from './services/settingsService.js';
 import { getFavorites, toggleFavorite as toggleFavoriteInStorage, hydrateFavorites } from './services/favoritesService.js';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient.js';
