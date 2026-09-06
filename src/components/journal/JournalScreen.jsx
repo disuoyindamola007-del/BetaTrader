@@ -1436,7 +1436,7 @@ export default function JournalScreen() {
             <div className="flex gap-2 p-4 border-t theme-border">
               <button
                 onClick={() => setDeleteConfirmTrade(null)}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold theme-bg-secondary theme-text-primary hover:theme-bg-tertiary transition-colors"
+                className="flex-1 py-3 rounded-xl text-sm font-semibold theme-bg-tertiary theme-text-primary hover:opacity-80 transition-colors"
               >
                 Cancel
               </button>
