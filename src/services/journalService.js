@@ -1,64 +1,12 @@
-// journalService — persistence for trade journal entries.
-// Storage: localStorage (client-only, per-device), same pattern as
-// alertsService.js. Swappable for a real backend in Batch 6/7 without
-// changing JournalScreen's call sites.
 import { scopedStorageKey } from './userStorageScope.js';
-
+import { supabase } from '../lib/supabaseClient.js';
 const STORAGE_KEY = 'betatrader:journal:v1';
-
-function loadTrades() {
-  try {
-    const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    console.error('[journalService] Failed to load trades from storage:', err.message);
-    return [];
-  }
-}
-
-function saveTrades(trades) {
-  try {
-    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(trades));
-  } catch (err) {
-    console.error('[journalService] Failed to save trades to storage:', err.message);
-  }
-}
-
-export function getTrades() {
-  return loadTrades();
-}
-
-export { saveTrades };
-
-// trade: { asset, direction, timeframe, entry, exit, stopLoss, takeProfit,
-//          lotSize, result, pl, bias, emotion, strategy, notes }
-// pl and result are entered directly by the user rather than derived —
-// the correct P&L formula depends on pip value / contract size / leverage,
-// which differ per asset class and aren't reliably knowable here.
-export function createTrade(trade) {
-  const trades = loadTrades();
-  const newTrade = {
-    id: Date.now(),
-    date: new Date().toISOString().slice(0, 10),
-    ...trade,
-  };
-  const updated = [newTrade, ...trades];
-  saveTrades(updated);
-  return updated;
-}
-
-export function updateTrade(id, updates) {
-  const trades = loadTrades();
-  const updated = trades.map(t => (t.id === id ? { ...t, ...updates } : t));
-  saveTrades(updated);
-  return updated;
-}
-
-export function deleteTrade(id) {
-  const trades = loadTrades();
-  const updated = trades.filter(t => t.id !== id);
-  saveTrades(updated);
-  return updated;
-}
+function loadTrades() { try { const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY)); const parsed = raw ? JSON.parse(raw) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
+function saveTrades(trades) { try { localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(trades)); } catch { /* storage unavailable */ } }
+export function getTrades() { return loadTrades(); }
+function row(trade, userId) { return { user_id: userId, asset: trade.asset, category: trade.category || trade.assetClass || null, provider: trade.provider || null, direction: trade.direction === 'buy' ? 'long' : trade.direction === 'sell' ? 'short' : trade.direction, status: trade.status || 'closed', entry: trade.entry ?? null, exit: trade.exit ?? null, stop_loss: trade.stopLoss ?? trade.stop_loss ?? null, take_profit: trade.takeProfit ?? trade.take_profit ?? null, quantity: trade.quantity ?? null, capital: trade.capital ?? null, leverage: trade.leverage ?? null, lot_type: trade.lotType ?? trade.lot_type ?? null, lot_size: trade.lotSize ?? trade.lot_size ?? null, result: trade.result || null, pl: trade.pl ?? null, traded_at: trade.tradedAt || trade.traded_at || trade.date || new Date().toISOString(), timeframe: trade.timeframe || null, emotion: trade.emotion || null, bias: trade.bias || null, strategy: trade.strategy || null, notes: trade.notes || null, client_id: String(trade.clientId || trade.client_id || trade.id || Date.now()) }; }
+function sync(promise) { promise.catch(error => console.error('[journalService] Cloud sync failed:', error.message)); }
+export function createTrade(trade) { const newTrade = { id: Date.now(), date: new Date().toISOString().slice(0, 10), ...trade }; const updated = [newTrade, ...loadTrades()]; saveTrades(updated); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('journal_trades').upsert(row(newTrade, data.user.id), { onConflict: 'user_id,client_id' }))); return updated; }
+export function updateTrade(id, updates) { const updated = loadTrades().map(t => t.id === id ? { ...t, ...updates } : t); saveTrades(updated); if (supabase) sync(supabase.auth.getUser().then(({ data }) => { if (!data.user) return; return supabase.from('journal_trades').update(row({ ...updated.find(t => t.id === id), ...updates }, data.user.id)).eq('user_id', data.user.id).eq('client_id', String(id)); })); return updated; }
+export function deleteTrade(id) { const updated = loadTrades().filter(t => t.id !== id); saveTrades(updated); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('journal_trades').delete().eq('user_id', data.user.id).eq('client_id', String(id)))); return updated; }
+export async function hydrateTrades() { if (!supabase) return loadTrades(); const { data: auth } = await supabase.auth.getUser(); if (!auth?.user) return loadTrades(); const { data, error } = await supabase.from('journal_trades').select('*').eq('user_id', auth.user.id).order('traded_at', { ascending: false }); if (error) throw error; const trades = (data || []).map(t => ({ ...t, id: t.client_id || t.id, assetClass: t.category, direction: t.direction === 'long' ? 'buy' : t.direction === 'short' ? 'sell' : t.direction, stopLoss: t.stop_loss, takeProfit: t.take_profit, lotSize: t.lot_size, lotType: t.lot_type, clientId: t.client_id, date: t.traded_at })); saveTrades(trades); return trades; }

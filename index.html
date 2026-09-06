@@ -14,7 +14,17 @@
       // Apply persisted theme before first paint to prevent flicker
       (function() {
         try {
-          var raw = localStorage.getItem('betatrader:settings:v1');
+          var userId = null;
+          for (var i = 0; i < localStorage.length; i++) {
+            var key = localStorage.key(i);
+            if (key && /^sb-.*-auth-token$/.test(key)) {
+              var auth = JSON.parse(localStorage.getItem(key) || 'null');
+              userId = auth && auth.user && auth.user.id;
+              if (userId) break;
+            }
+          }
+          var settingsKey = userId ? 'betatrader:settings:v1:user:' + userId : 'betatrader:settings:v1:signed-out';
+          var raw = localStorage.getItem(settingsKey);
           if (raw) {
             var settings = JSON.parse(raw);
             var darkMode = settings.darkMode !== undefined ? settings.darkMode : true;

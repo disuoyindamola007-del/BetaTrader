@@ -81,7 +81,7 @@ function AuthCallbackScreen() {
 }
 
 function AppContent() {
-  const { activeTab, setActiveTab, selectedAsset, selectedNews, selectedPulseMetric, darkMode, authLoading, isAuthenticated } = useApp();
+  const { activeTab, setActiveTab, selectedAsset, selectedNews, selectedPulseMetric, darkMode, authLoading, isAuthenticated, migrationData, importLocalData, skipLocalData } = useApp();
   const [authCallback] = useState(isAuthCallbackUrl);
 
   // This is a single-page app without client-side URL routes. Send direct
@@ -132,6 +132,20 @@ function AppContent() {
   return (
     <div className="flex flex-col h-screen">
       <Toast />
+      {migrationData && <div className="fixed inset-0 z-[3000] bg-black/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="migration-title">
+        <div className="glass-card w-full max-w-md p-5">
+          <h2 id="migration-title" className="text-lg font-bold theme-text-primary">Import data from this device?</h2>
+          <p className="text-sm theme-text-secondary mt-2">We found data saved before cloud accounts were enabled. Importing merges it into this account without replacing existing items.</p>
+          <ul className="mt-4 space-y-2 text-sm theme-text-primary">
+            {Object.entries(migrationData).filter(([, item]) => item.count > 0).map(([label, item]) => <li key={label} className="flex justify-between theme-bg-tertiary rounded-lg px-3 py-2"><span className="capitalize">{label}</span><strong>{item.count}</strong></li>)}
+          </ul>
+          <div className="grid grid-cols-2 gap-2 mt-5">
+            <button onClick={skipLocalData} className="btn-secondary">Skip</button>
+            <button onClick={importLocalData} className="btn-primary">Import and merge</button>
+          </div>
+          <p className="text-[10px] theme-text-muted mt-3">Your original local copy is retained until later cloud migration confirms it is safe to remove.</p>
+        </div>
+      </div>}
       <ScrollToTop activeTab={activeTab} selectedAsset={selectedAsset} selectedNews={selectedNews} selectedPulseMetric={selectedPulseMetric} />
       <main className="flex-1 overflow-y-auto scroll-hide pb-24">
         {renderScreen()}

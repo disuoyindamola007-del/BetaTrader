@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BookOpen, Plus, BarChart3, TrendingUp, TrendingDown, Trash2, X, ChevronRight, Calendar, Clock, Leaf, ShieldCheck, AlertTriangle, Zap, ArrowUp, ArrowDown, Minus } from 'lucide-react';
 import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
-import { getTrades, createTrade, deleteTrade, saveTrades } from '../../services/journalService.js';
+import { getTrades, createTrade, updateTrade, deleteTrade, hydrateTrades } from '../../services/journalService.js';
 
 const TIMEFRAME_OPTIONS = ['5m', '15m', '30m', '1H', '4H', '8H', '1D'];
 const EMOTIONS = [
@@ -219,6 +219,7 @@ export default function JournalScreen() {
     return 1;
   });
   const [trades, setTrades] = useState(() => getTrades());
+  useEffect(() => { hydrateTrades().then(setTrades).catch(error => console.error('[journal] Cloud hydration failed:', error.message)); }, []);
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({ step1: { ...step1Errors }, step2: { ...step2Errors }, step3: { ...step3Errors } });
   const [searchQuery, setSearchQuery] = useState('');
@@ -430,19 +431,15 @@ export default function JournalScreen() {
     const exit = parseFloat(outcomeExitPrice);
     if (Number.isNaN(exit)) return;
 
-    const trades = Array.isArray(trades) ? trades : getTrades();
-    const updatedTrades = trades.map(t => {
-      if (t.id === outcomeTrade.id) {
-        return {
-          ...t,
-          status: 'closed',
-          exit: String(exit),
-          result: outcomeResult,
-        };
-      }
-      return t;
+    // Route through updateTrade so the closed outcome is persisted locally AND
+    // synced to the cloud (status/exit/result). Previously this used a
+    // self-referential `const trades = Array.isArray(trades) ? ...` that threw
+    // a TDZ ReferenceError and never reached the cloud.
+    const updatedTrades = updateTrade(outcomeTrade.id, {
+      status: 'closed',
+      exit,
+      result: outcomeResult,
     });
-    saveTrades(updatedTrades);
     setTrades(updatedTrades);
     setShowOutcomeModal(false);
     setOutcomeTrade(null);

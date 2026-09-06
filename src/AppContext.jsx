@@ -1,19 +1,21 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSettings, updateSetting } from './services/settingsService.js';
-import { getFavorites, toggleFavorite as toggleFavoriteInStorage } from './services/favoritesService.js';
+import { getFavorites, toggleFavorite as toggleFavoriteInStorage, hydrateFavorites } from './services/favoritesService.js';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { setStorageUser } from './services/userStorageScope.js';
+import { getLocalMigrationData, hasLocalMigrationData, importLocalMigrationData, skipLocalMigration } from './services/migrationService.js';
 
 const AppContext = createContext();
 
 function getSessionName(session) {
   const metadata = session?.user?.user_metadata;
-  return metadata?.display_name?.trim() || metadata?.first_name || null;
+  return metadata?.display_name?.trim() || metadata?.username?.trim() || metadata?.first_name?.trim() || null;
 }
 
 export function AppProvider({ children }) {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+  const [migrationData, setMigrationData] = useState(null);
 
   useEffect(() => {
     if (!supabase) return undefined;
@@ -21,29 +23,72 @@ export function AppProvider({ children }) {
     supabase.auth.getSession().then(({ data }) => {
       if (mounted) {
         setStorageUser(data.session?.user?.id);
+        setSettings(getSettings());
         setUserName(getSessionName(data.session));
         setSession(data.session);
         setFavorites(getFavorites());
+        setMigrationData(data.session && hasLocalMigrationData() ? getLocalMigrationData() : null);
         setAuthLoading(false);
       }
     }).catch(() => { if (mounted) setAuthLoading(false); });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (mounted) {
         setStorageUser(nextSession?.user?.id);
+        setSettings(getSettings());
         setUserName(getSessionName(nextSession));
         setSession(nextSession);
         setFavorites(getFavorites());
+        setMigrationData(nextSession && hasLocalMigrationData() ? getLocalMigrationData() : null);
         setAuthLoading(false);
       }
     });
     return () => { mounted = false; listener.subscription.unsubscribe(); };
   }, []);
 
+  const importLocalData = async () => {
+    try {
+      await importLocalMigrationData(migrationData || undefined);
+      // Migration writes to the cloud only; re-hydrate favorites from the
+      // server so the merged set (not the stale local cache) drives the UI.
+      setFavorites(await hydrateFavorites());
+      setMigrationData(null);
+      showToast('Local data imported to your cloud account.', 'success', 2500);
+    } catch (error) {
+      showToast(error.message || 'Could not import local data. Nothing was removed.', 'error', 4000);
+    }
+  };
+
+  const skipLocalData = () => {
+    skipLocalMigration();
+    setMigrationData(null);
+  };
+
+  const exportAccountData = async () => {
+    if (!supabase) throw new Error('Authentication is not configured.');
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    const response = await fetch('/api/account/export', { headers: { Authorization: `Bearer ${currentSession?.access_token || ''}` } });
+    if (!response.ok) throw new Error('Could not export account data.');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = 'betatrader-export.json'; link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const deleteAccount = async () => {
+    if (!supabase) throw new Error('Authentication is not configured.');
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    const response = await fetch('/api/account/delete', { method: 'POST', headers: { Authorization: `Bearer ${currentSession?.access_token || ''}` } });
+    if (!response.ok) throw new Error('Could not delete account.');
+    await supabase.auth.signOut();
+    setStorageUser(null); setSettings(getSettings()); setSession(null); setFavorites([]);
+  };
+
   const signOut = async () => {
     if (!supabase) { setSession(null); return; }
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setStorageUser(null);
+    setSettings(getSettings());
     setSession(null);
     setFavorites([]);
     setSelectedAsset(null);
@@ -160,6 +205,10 @@ export function AppProvider({ children }) {
 
   // Load the authenticated profile so greetings use the user's real first name.
   useEffect(() => {
+    if (supabase && session?.user?.id) hydrateFavorites().then(setFavorites).catch(error => console.error('[favorites] Cloud hydration failed:', error.message));
+  }, [session?.user?.id]);
+
+  useEffect(() => {
     if (!supabase || !session?.user?.id) { setUserName(null); setProfile({ firstName: '', lastName: '', displayName: '', email: '' }); return; }
     let active = true;
     const sessionName = getSessionName(session);
@@ -190,10 +239,16 @@ export function AppProvider({ children }) {
   // toggle changed nothing anywhere else in the app).
   const [settings, setSettings] = useState(() => getSettings());
   const syncSettingsToCloud = (changes) => {
-    if (!supabase || !session?.user?.id) return;
-    supabase.from('profiles').update(changes).eq('user_id', session.user.id)
+    if (!supabase || !session?.user?.id) return Promise.resolve();
+    return supabase.from('profiles').update(changes).eq('user_id', session.user.id)
       .then(({ error }) => {
-        if (error) console.error('[profile] Preference sync failed:', error.message);
+        if (error) throw error;
+        return true;
+      })
+      .catch(error => {
+        console.error('[profile] Preference sync failed:', error.message);
+        showToast('Saved on this device; cloud sync will retry when available.', 'info', 3000);
+        return false;
       });
   };
   const darkMode = settings.darkMode;
@@ -300,6 +355,8 @@ export function AppProvider({ children }) {
     timezone, setTimezone,
     favorites, toggleFavorite, isFavorite,
     toast,
+    migrationData, importLocalData, skipLocalData,
+    exportAccountData, deleteAccount,
     userName, setUserName, profile, updateProfile,
   };
 

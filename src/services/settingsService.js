@@ -1,6 +1,8 @@
 // settingsService — persistence for simple user preferences that don't
 // warrant their own backend yet (notifications opt-in, dark mode flag).
-// Same localStorage pattern as alertsService.js / favoritesService.js.
+// Settings are scoped per authenticated user. Cloud profile values are the
+// source of truth after sign-in; local storage is an offline/startup cache.
+import { scopedStorageKey } from './userStorageScope.js';
 
 const STORAGE_KEY = 'betatrader:settings:v1';
 
@@ -24,7 +26,7 @@ export const TIMEZONE_OPTIONS = [
 
 function loadSettings() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY));
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw);
     return { ...DEFAULTS, ...parsed };
@@ -36,7 +38,7 @@ function loadSettings() {
 
 function saveSettings(settings) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(settings));
   } catch (err) {
     console.error('[settingsService] Failed to save settings to storage:', err.message);
   }

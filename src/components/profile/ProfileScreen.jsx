@@ -1,29 +1,39 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { User, Moon, Bell, Shield, HelpCircle, LogOut, ChevronRight, Wallet, X, Globe, Check, Loader2 } from 'lucide-react';
 import { useApp } from '../../AppContext.jsx';
-import { getTrades } from '../../services/journalService.js';
-import { getAlerts } from '../../services/alertsService.js';
+import { getTrades, hydrateTrades } from '../../services/journalService.js';
+import { getAlerts, hydrateAlerts } from '../../services/alertsService.js';
 import { requestNotificationPermission, TIMEZONE_OPTIONS } from '../../services/settingsService.js';
 
 export default function ProfileScreen() {
-  const { darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, userName, timezone, setTimezone, signOut, profile, updateProfile } = useApp();
+  const { darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, userName, timezone, setTimezone, signOut, profile, updateProfile, exportAccountData, deleteAccount } = useApp();
   const [toast, setToast] = useState(null);
   const [showPersonalInfo, setShowPersonalInfo] = useState(false);
   const [personalInfo, setPersonalInfo] = useState({ firstName: '', lastName: '', displayName: '' });
   const [savingProfile, setSavingProfile] = useState(false);
   const [showTimezonePicker, setShowTimezonePicker] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
 
   // Real stats — computed live from actual persisted journal/alerts data,
-  // not hardcoded placeholders.
+  // not hardcoded placeholders. Hydrate from the cloud on mount so counts are
+  // correct even when Profile is opened before Journal/Alerts screens.
+  const [dataVersion, setDataVersion] = useState(0);
+  useEffect(() => {
+    let active = true;
+    Promise.allSettled([hydrateTrades(), hydrateAlerts()]).then(() => {
+      if (active) setDataVersion(v => v + 1);
+    });
+    return () => { active = false; };
+  }, []);
   const stats = useMemo(() => {
     const trades = getTrades();
     const alerts = getAlerts();
     const wins = trades.filter(t => t.result === 'win').length;
     const winRate = trades.length ? Math.round((wins / trades.length) * 100) : 0;
     return { totalTrades: trades.length, winRate, totalAlerts: alerts.length };
-  }, []);
+  }, [dataVersion]);
 
   const showComingSoon = (label) => {
     setToast(`${label} isn't built yet — coming in a future update.`);
@@ -84,6 +94,9 @@ export default function ProfileScreen() {
     setShowTimezonePicker(false);
   };
 
+  const handleExport = async () => { try { setAccountBusy(true); await exportAccountData(); } catch (error) { setToast(error.message); } finally { setAccountBusy(false); } };
+  const handleDelete = async () => { if (!window.confirm('Delete your BetaTrader account and all cloud data? This cannot be undone.')) return; try { setAccountBusy(true); await deleteAccount(); } catch (error) { setToast(error.message); } finally { setAccountBusy(false); } };
+
   const menuItems = [
     { icon: User, label: 'Personal Information', action: openPersonalInfo },
     { icon: Wallet, label: 'Subscription', badge: 'Free', action: () => showComingSoon('Subscription management') },
@@ -91,6 +104,8 @@ export default function ProfileScreen() {
     { icon: Moon, label: darkMode ? 'Dark Mode' : 'Light Mode', toggle: true, value: darkMode, action: () => setDarkMode(!darkMode) },
     { icon: Globe, label: 'Time Zone', value: timezone, action: () => setShowTimezonePicker(true), note: `Current: ${TIMEZONE_OPTIONS.find(t => t.value === timezone)?.label || timezone}` },
     { icon: Shield, label: 'Security', action: () => showComingSoon('Security settings') },
+    { icon: Shield, label: 'Export my data', action: handleExport },
+    { icon: Shield, label: 'Delete account', action: handleDelete },
     { icon: HelpCircle, label: 'Help & Support', action: () => showComingSoon('Help & Support') },
   ];
 
@@ -184,7 +199,7 @@ export default function ProfileScreen() {
 
       <button
         onClick={handleSignOut}
-        disabled={signingOut}
+        disabled={signingOut || accountBusy}
         className="w-full mt-4 btn-secondary text-red-400 border-red-500/20 hover:bg-red-500/10 flex items-center justify-center gap-2 disabled:opacity-60"
       >
         {signingOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}

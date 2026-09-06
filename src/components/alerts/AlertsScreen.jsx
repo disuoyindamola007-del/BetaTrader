@@ -2,16 +2,18 @@ import { useState, useEffect, useMemo } from 'react';
 import { Bell, Plus, Trash2, X, AlertCircle } from 'lucide-react';
 import { useCryptoBatch, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { getCategory } from '../../services/marketDataService.js';
-import { getAlerts, createAlert, deleteAlert, checkAlerts } from '../../services/alertsService.js';
+import { getAlerts, createAlert, deleteAlert, checkAlerts, hydrateAlerts } from '../../services/alertsService.js';
 import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
 
 export default function AlertsScreen() {
   const [alerts, setAlerts] = useState(() => getAlerts());
+  useEffect(() => { hydrateAlerts().then(setAlerts).catch(error => console.error('[alerts] Cloud hydration failed:', error.message)); }, []);
   const [showForm, setShowForm] = useState(false);
   const [formAsset, setFormAsset] = useState('');
   const [formCondition, setFormCondition] = useState('above');
   const [formValue, setFormValue] = useState('');
   const [formError, setFormError] = useState('');
+  const [selectedInstrument, setSelectedInstrument] = useState(null);
   const [deleteConfirmAlert, setDeleteConfirmAlert] = useState(null);
   const [triggeredAlerts, setTriggeredAlerts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -19,6 +21,7 @@ export default function AlertsScreen() {
   const { results: searchResults, isLoading: searchLoading } = useSymbolSearch(searchQuery);
 
   const selectSearchResult = (result) => {
+    setSelectedInstrument(result);
     setFormAsset(result.symbol);
     setSearchQuery(result.symbol);
     setShowSearchResults(false);
@@ -76,16 +79,32 @@ export default function AlertsScreen() {
     setShowForm(s => !s);
   };
 
+  const openCreateForm = () => {
+    setFormError('');
+    setShowForm(true);
+  };
+
   const handleCreate = () => {
     const asset = formAsset.trim();
     const value = parseFloat(formValue);
 
     if (!asset) { setFormError('Enter an asset symbol.'); return; }
+    if (!selectedInstrument || selectedInstrument.symbol !== asset) {
+      setFormError('Select an instrument from the search results before creating an alert.');
+      return;
+    }
     if (formValue === '' || Number.isNaN(value)) { setFormError('Enter a valid target price.'); return; }
 
-    const updated = createAlert({ asset, condition: formCondition, value });
+    const updated = createAlert({
+      asset,
+      condition: formCondition,
+      value,
+      provider: selectedInstrument.source,
+      category: selectedInstrument.category,
+    });
     setAlerts(updated);
     setFormAsset('');
+    setSelectedInstrument(null);
     setFormValue('');
     setFormCondition('above');
     setFormError('');
@@ -112,15 +131,20 @@ export default function AlertsScreen() {
           <h1 className="text-xl font-extrabold">Alerts</h1>
           <button
             onClick={handleToggleForm}
+            aria-label="Open Create Alert"
             className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center text-slate-950"
           >
             {showForm ? <X size={18} /> : <Plus size={18} />}
           </button>
         </div>
+        <button onClick={openCreateForm} className="w-full btn-primary flex items-center justify-center gap-2">
+          <Plus size={16} /> Create Alert
+        </button>
       </div>
 
       {showForm && (
-        <div className="glass-card p-4 mb-4 flex flex-col gap-3">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowForm(false)}>
+        <div className="glass-card w-full max-w-md p-4 flex flex-col gap-3 max-h-[90vh] overflow-y-auto" onClick={event => event.stopPropagation()}>
           <p className="text-sm font-semibold theme-text-primary">New Price Alert</p>
 
           <div>
@@ -139,6 +163,7 @@ export default function AlertsScreen() {
                   const val = e.target.value;
                   setSearchQuery(val);
                   setFormAsset(val.trim().toUpperCase());
+                  setSelectedInstrument(null);
                   setShowSearchResults(true);
                   if (formError) setFormError('');
                 }}
@@ -155,7 +180,7 @@ export default function AlertsScreen() {
                 <div className="absolute z-50 w-full mt-1 theme-bg-secondary theme-border rounded-xl shadow-xl max-h-60 overflow-y-auto">
                   {searchLoading && <div className="p-3 text-xs theme-text-secondary text-center">Searching...</div>}
                   {!searchLoading && searchResults.length === 0 && (
-                    <div className="p-3 text-xs theme-text-secondary text-center">No results — you can still create an alert manually.</div>
+                    <div className="p-3 text-xs theme-text-secondary text-center">No results found</div>
                   )}
                   {!searchLoading && searchResults.map(result => (
                     <button
@@ -205,9 +230,10 @@ export default function AlertsScreen() {
           {formError && <p className="text-xs text-red-400">{formError}</p>}
 
           <div className="flex gap-2">
-            <button onClick={handleToggleForm} className="flex-1 btn-secondary">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="flex-1 btn-secondary">Cancel</button>
             <button onClick={handleCreate} className="flex-1 btn-primary">Create Alert</button>
           </div>
+        </div>
         </div>
       )}
 

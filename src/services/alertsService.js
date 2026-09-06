@@ -1,87 +1,11 @@
-// alertsService — persistence and trigger logic for price alerts.
-// Storage: localStorage (client-only, per-device). No backend yet —
-// this is intentionally simple so it can be swapped for a real
-// backend in Batch 6/7 without changing the AlertsScreen call sites.
 import { scopedStorageKey } from './userStorageScope.js';
-
+import { supabase } from '../lib/supabaseClient.js';
 const STORAGE_KEY = 'betatrader:alerts:v1';
-
-function loadAlerts() {
-  try {
-    const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    console.error('[alertsService] Failed to load alerts from storage:', err.message);
-    return [];
-  }
-}
-
-function saveAlerts(alerts) {
-  try {
-    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(alerts));
-  } catch (err) {
-    console.error('[alertsService] Failed to save alerts to storage:', err.message);
-  }
-}
-
-export function getAlerts() {
-  return loadAlerts();
-}
-
-export function createAlert({ asset, condition, value }) {
-  const alerts = loadAlerts();
-  const newAlert = {
-    id: Date.now(),
-    asset: asset.toUpperCase().trim(),
-    type: 'price',
-    condition, // 'above' | 'below'
-    value: parseFloat(value),
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  };
-  const updated = [...alerts, newAlert];
-  saveAlerts(updated);
-  return updated;
-}
-
-export function deleteAlert(id) {
-  const alerts = loadAlerts();
-  const updated = alerts.filter(a => a.id !== id);
-  saveAlerts(updated);
-  return updated;
-}
-
-// Given the current alert list and a live-prices map (keyed by symbol,
-// e.g. from useBatchQuotes/useCryptoBatch), check every still-active
-// alert's condition against the live price. Returns the updated list
-// (persisting it if anything changed) plus whether any alert newly
-// triggered, so the caller can decide whether to show a notification.
-export function checkAlerts(alerts, livePrices) {
-  let changed = false;
-  const newlyTriggered = [];
-
-  const updated = alerts.map(alert => {
-    if (alert.status === 'triggered') return alert;
-
-    const symbolKey = alert.asset.replace('/', '');
-    const live = livePrices[alert.asset] || livePrices[symbolKey];
-    if (!live || live.price == null) return alert;
-
-    let hit = false;
-    if (alert.condition === 'above' && live.price >= alert.value) hit = true;
-    if (alert.condition === 'below' && live.price <= alert.value) hit = true;
-
-    if (hit) {
-      changed = true;
-      const triggeredAlert = { ...alert, status: 'triggered', triggeredAt: new Date().toISOString() };
-      newlyTriggered.push(triggeredAlert);
-      return triggeredAlert;
-    }
-    return alert;
-  });
-
-  if (changed) saveAlerts(updated);
-  return { alerts: updated, changed, newlyTriggered };
-}
+function loadAlerts() { try { const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY)); const parsed = raw ? JSON.parse(raw) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
+function saveAlerts(alerts) { try { localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(alerts)); } catch { /* storage unavailable */ } }
+export function getAlerts() { return loadAlerts(); }
+function sync(promise) { promise.catch(error => console.error('[alertsService] Cloud sync failed:', error.message)); }
+export function createAlert({ asset, condition, value, provider, category }) { const newAlert = { id: Date.now(), asset: asset.toUpperCase().trim(), type: 'price', condition, value: parseFloat(value), provider: provider || null, category: category || null, status: 'active', createdAt: new Date().toISOString() }; const updated = [...loadAlerts(), newAlert]; saveAlerts(updated); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('alerts').upsert({ user_id: data.user.id, asset: newAlert.asset, condition, threshold: newAlert.value, type: 'price', provider: newAlert.provider, category: newAlert.category, status: 'active', client_id: String(newAlert.id) }, { onConflict: 'user_id,client_id' }))); return updated; }
+export function deleteAlert(id) { const updated = loadAlerts().filter(a => a.id !== id); saveAlerts(updated); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('alerts').delete().eq('user_id', data.user.id).eq('client_id', String(id)))); return updated; }
+export function checkAlerts(alerts, livePrices) { let changed = false; const newlyTriggered = []; const updated = alerts.map(alert => { if (alert.status === 'triggered') return alert; const live = livePrices[alert.asset] || livePrices[alert.asset.replace('/', '')]; if (!live || live.price == null) return alert; const hit = alert.condition === 'above' ? live.price >= alert.value : live.price <= alert.value; if (!hit) return alert; changed = true; const triggered = { ...alert, status: 'triggered', triggeredAt: new Date().toISOString() }; newlyTriggered.push(triggered); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('alerts').update({ status: 'triggered', triggered_at: triggered.triggeredAt, notification_state: 'sent' }).eq('user_id', data.user.id).eq('client_id', String(alert.id)))); return triggered; }); if (changed) saveAlerts(updated); return { alerts: updated, changed, newlyTriggered }; }
+export async function hydrateAlerts() { if (!supabase) return loadAlerts(); const { data: auth } = await supabase.auth.getUser(); if (!auth?.user) return loadAlerts(); const { data, error } = await supabase.from('alerts').select('*').eq('user_id', auth.user.id).order('created_at', { ascending: true }); if (error) throw error; const alerts = (data || []).map(a => ({ id: a.client_id || a.id, asset: a.asset, type: a.type, condition: a.condition, value: a.threshold, provider: a.provider, category: a.category, status: a.status, triggeredAt: a.triggered_at, createdAt: a.created_at })); saveAlerts(alerts); return alerts; }
