@@ -298,36 +298,29 @@ export default function AlertsScreen() {
         ))}
       </div>
 
-      {alerts.length > 0 && !showForm && (
-        <button onClick={handleToggleForm} className="w-full mt-4 btn-primary">
-          <Plus size={16} />
-          Create New Alert
-        </button>
-      )}
-
       {/* Delete confirmation modal */}
       {deleteConfirmAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirmAlert(null)}>
-          <div className="theme-bg-secondary w-full sm:w-[400px] rounded-2xl border theme-border shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setDeleteConfirmAlert(null)}>
+          <div className="theme-bg-secondary w-full max-w-[400px] rounded-2xl border theme-border shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-slate-700 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
                 <Trash2 size={20} className="text-red-400" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-slate-200">Delete Alert?</h3>
+                <h3 className="text-base font-semibold theme-text-primary">Delete Alert?</h3>
                 <p className="text-xs text-slate-500 mt-0.5">This action cannot be undone.</p>
               </div>
             </div>
             <div className="p-5">
               <p className="text-sm text-slate-300">
-                Are you sure you want to delete the alert for <span className="font-semibold text-slate-200">{deleteConfirmAlert.asset}</span>{' '}
+                Are you sure you want to delete the alert for <span className="font-semibold theme-text-primary">{deleteConfirmAlert.asset}</span>{' '}
                 (Price {deleteConfirmAlert.condition} {deleteConfirmAlert.value})?
               </p>
             </div>
             <div className="flex gap-2 p-4 border-t border-slate-700">
               <button
                 onClick={() => setDeleteConfirmAlert(null)}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                className="flex-1 py-3 rounded-xl text-sm font-semibold theme-bg-tertiary theme-text-primary hover:opacity-80 transition-colors"
               >
                 Cancel
               </button>

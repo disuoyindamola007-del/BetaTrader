@@ -24,7 +24,9 @@
             }
           }
           var settingsKey = userId ? 'betatrader:settings:v1:user:' + userId : 'betatrader:settings:v1:signed-out';
-          var raw = localStorage.getItem(settingsKey);
+          // Also recognize the pre-cloud unscoped preference key so an
+          // existing light-mode choice is available during this transition.
+          var raw = localStorage.getItem(settingsKey) || localStorage.getItem('betatrader:settings:v1');
           if (raw) {
             var settings = JSON.parse(raw);
             var darkMode = settings.darkMode !== undefined ? settings.darkMode : true;
@@ -37,8 +39,11 @@
             return;
           }
         } catch(e) {}
-        document.documentElement.classList.add('dark');
-        document.documentElement.classList.remove('light');
+        // Do not force a dark paint while Supabase/profile hydration is still
+        // pending. The CSS default matches the app surface until a saved
+        // preference is found.
+        document.documentElement.classList.add('light');
+        document.documentElement.classList.remove('dark');
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">

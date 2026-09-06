@@ -24,9 +24,25 @@ export const TIMEZONE_OPTIONS = [
   { value: 'Australia/Sydney', label: 'Sydney (AEST/AEDT)' },
 ];
 
+function getBrowserAuthUserId() {
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !/^sb-.*-auth-token$/.test(key)) continue;
+      const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+      const userId = parsed?.user?.id || parsed?.currentSession?.user?.id;
+      if (userId) return userId;
+    }
+  } catch { /* use the current storage scope */ }
+  return null;
+}
+
 function loadSettings() {
   try {
-    const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY));
+    const scopedKey = scopedStorageKey(STORAGE_KEY);
+    const browserUserId = getBrowserAuthUserId();
+    const authScopedKey = browserUserId ? `${STORAGE_KEY}:user:${browserUserId}` : null;
+    const raw = localStorage.getItem(scopedKey) || (authScopedKey && localStorage.getItem(authScopedKey));
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw);
     return { ...DEFAULTS, ...parsed };
@@ -53,6 +69,15 @@ export function updateSetting(key, value) {
   const updated = { ...current, [key]: value };
   saveSettings(updated);
   return updated;
+}
+
+// Replace the local cache after authenticated profile hydration without
+// triggering another cloud write. This keeps the restored preference
+// available to index.html before the next first paint.
+export function replaceSettings(settings) {
+  const next = { ...DEFAULTS, ...(settings || {}) };
+  saveSettings(next);
+  return next;
 }
 
 // Requests browser notification permission (real action, not a decoration).

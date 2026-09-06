@@ -1413,9 +1413,9 @@ export default function JournalScreen() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmTrade && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center transparent" onClick={() => setDeleteConfirmTrade(null)}>
-          <div className="theme-bg-secondary w-full sm:w-[400px] rounded-2xl theme-border shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="p-5 border-b border-slate-700 flex items-center gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center transparent p-4" onClick={() => setDeleteConfirmTrade(null)}>
+          <div className="theme-bg-secondary w-full max-w-[400px] rounded-2xl theme-border shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b theme-border flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
                 <Trash2 size={20} className="text-red-400" />
               </div>
@@ -1433,7 +1433,7 @@ export default function JournalScreen() {
                 </span>?
               </p>
             </div>
-            <div className="flex gap-2 p-4 border-t border-slate-700">
+            <div className="flex gap-2 p-4 border-t theme-border">
               <button
                 onClick={() => setDeleteConfirmTrade(null)}
                 className="flex-1 py-3 rounded-xl text-sm font-semibold theme-bg-secondary theme-text-primary hover:theme-bg-tertiary transition-colors"

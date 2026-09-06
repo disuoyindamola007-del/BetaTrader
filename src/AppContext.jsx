@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getSettings, updateSetting } from './services/settingsService.js';
+import { getSettings, updateSetting, replaceSettings } from './services/settingsService.js';
 import { getFavorites, toggleFavorite as toggleFavoriteInStorage, hydrateFavorites } from './services/favoritesService.js';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { setStorageUser } from './services/userStorageScope.js';
@@ -227,12 +227,22 @@ export function AppProvider({ children }) {
           notificationsEnabled: data?.notifications_enabled ?? current.notificationsEnabled,
           darkMode: data?.dark_mode ?? current.darkMode,
         }));
+        // Keep the pre-paint cache synchronized with the cloud profile so a
+        // later refresh starts in the user's actual theme.
+        const hydratedSettings = getSettings();
+        replaceSettings({
+          timezone: data?.timezone || hydratedSettings.timezone,
+          notificationsEnabled: data?.notifications_enabled ?? hydratedSettings.notificationsEnabled,
+          darkMode: data?.dark_mode ?? hydratedSettings.darkMode,
+        });
         // A user-entered username/display name takes precedence on Home;
         // otherwise use the person's first name.
         setUserName(displayName.trim() || firstName || 'Trader');
       });
     return () => { active = false; };
   }, [session?.user?.id]);
+
+  const currentSettings = () => getSettings();
 
   // Persisted settings — single source of truth (previously ProfileScreen
   // kept its own disconnected local state for darkMode, which meant the
