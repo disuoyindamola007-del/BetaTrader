@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Bell, Plus, Trash2, X, AlertCircle } from 'lucide-react';
+import { Bell, Plus, Trash2, X } from 'lucide-react';
 import { useCryptoBatch, useBatchQuotes } from '../../hooks/useMarketData.js';
 import { getCategory } from '../../services/marketDataService.js';
 import { getAlerts, createAlert, deleteAlert, checkAlerts, hydrateAlerts } from '../../services/alertsService.js';
@@ -15,7 +15,6 @@ export default function AlertsScreen() {
   const [formError, setFormError] = useState('');
   const [selectedInstrument, setSelectedInstrument] = useState(null);
   const [deleteConfirmAlert, setDeleteConfirmAlert] = useState(null);
-  const [triggeredAlerts, setTriggeredAlerts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const { results: searchResults, isLoading: searchLoading } = useSymbolSearch(searchQuery);
@@ -47,7 +46,6 @@ export default function AlertsScreen() {
         setAlerts(result.alerts);
         // Track newly triggered alerts for notification display
         if (result.newlyTriggered.length > 0) {
-          setTriggeredAlerts(prev => [...prev, ...result.newlyTriggered]);
           // Request browser notification permission
           if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
@@ -234,31 +232,6 @@ export default function AlertsScreen() {
             <button onClick={handleCreate} className="flex-1 btn-primary">Create Alert</button>
           </div>
         </div>
-        </div>
-      )}
-
-      {/* Triggered alerts notification banner */}
-      {triggeredAlerts.length > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-amber-400 mb-1">Alerts Triggered</p>
-              <div className="space-y-1">
-                {triggeredAlerts.map(alert => (
-                  <p key={alert.id} className="text-xs text-amber-300">
-                    <span className="font-bold">{alert.asset}</span> — Price is now {alert.condition} {alert.value}
-                  </p>
-                ))}
-              </div>
-              <button
-                onClick={() => setTriggeredAlerts([])}
-                className="text-[10px] text-amber-500 mt-2 hover:text-amber-400"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

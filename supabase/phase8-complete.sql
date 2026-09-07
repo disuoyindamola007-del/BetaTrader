@@ -137,6 +137,22 @@ create table if not exists public.notifications (
   created_at timestamptz not null default now()
 );
 
+-- A triggered alert is one event, even if multiple browser tabs or retries
+-- attempt to persist it. Remove legacy duplicates before enforcing the key;
+-- keep the earliest row so existing unread/read state is preserved.
+delete from public.notifications duplicate
+using public.notifications keeper
+where duplicate.type = 'alert_triggered'
+  and duplicate.source is not null
+  and duplicate.user_id = keeper.user_id
+  and duplicate.source = keeper.source
+  and duplicate.id <> keeper.id
+  and duplicate.created_at > keeper.created_at;
+
+create unique index if not exists notifications_alert_source_unique
+  on public.notifications(user_id, source)
+  where type = 'alert_triggered' and source is not null;
+
 -- -------------------------------------------------------------------------
 -- Shared updated_at trigger
 -- -------------------------------------------------------------------------

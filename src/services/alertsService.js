@@ -22,12 +22,16 @@ export function checkAlerts(alerts, livePrices) {
     if (supabase) sync(supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return;
       const clientId = String(alert.id);
-      const { error: alertError } = await supabase.from('alerts').update({
+      // Claim the one-time transition atomically. Another tab/poll may have
+      // evaluated the same local snapshot, so only the request that changes
+      // active -> triggered is allowed to create a notification.
+      const { data: claimed, error: alertError } = await supabase.from('alerts').update({
         status: 'triggered', triggered_at: triggered.triggeredAt, notification_state: 'sent',
-      }).eq('user_id', data.user.id).eq('client_id', clientId);
+      }).eq('user_id', data.user.id).eq('client_id', clientId).eq('status', 'active').select('client_id').maybeSingle();
       if (alertError) throw alertError;
-      // Persist the attention event so it remains available after refresh and
-      // can be read by the user from the cloud Notifications screen.
+      if (!claimed) return;
+      // The unique (user_id, source) index is a second line of defense for
+      // concurrent tabs or retries after the alert claim succeeds.
       const { error: notificationError } = await supabase.from('notifications').insert({
         user_id: data.user.id,
         type: 'alert_triggered',
@@ -36,7 +40,7 @@ export function checkAlerts(alerts, livePrices) {
         source: `alert:${clientId}`,
         url: '/?tab=alerts',
       });
-      if (notificationError) throw notificationError;
+      if (notificationError && notificationError.code !== '23505') throw notificationError;
     }));
     return triggered;
   });

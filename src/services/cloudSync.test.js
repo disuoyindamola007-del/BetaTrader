@@ -16,6 +16,7 @@ function makeBuilder(table, op) {
     order() { return builder; },
     select() { return builder; },
     single() { return Promise.resolve(selectResult); },
+    maybeSingle() { return Promise.resolve(selectResult); },
     then(resolve, reject) {
       const result = op.type === 'select' ? selectResult : { data: null, error: null };
       return Promise.resolve(result).then(resolve, reject);
