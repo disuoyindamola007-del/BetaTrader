@@ -1,13 +1,16 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Bell, Plus, Trash2, X } from 'lucide-react';
-import { useCryptoBatch, useBatchQuotes } from '../../hooks/useMarketData.js';
-import { getCategory } from '../../services/marketDataService.js';
-import { getAlerts, createAlert, deleteAlert, checkAlerts, hydrateAlerts } from '../../services/alertsService.js';
+import { getAlerts, createAlert, deleteAlert, hydrateAlerts } from '../../services/alertsService.js';
 import { useSymbolSearch } from '../../hooks/useSymbolSearch.js';
 
 export default function AlertsScreen() {
   const [alerts, setAlerts] = useState(() => getAlerts());
-  useEffect(() => { hydrateAlerts().then(setAlerts).catch(error => console.error('[alerts] Cloud hydration failed:', error.message)); }, []);
+  useEffect(() => {
+    hydrateAlerts().then(setAlerts).catch(error => console.error('[alerts] Cloud hydration failed:', error.message));
+    const refresh = () => setAlerts(getAlerts());
+    window.addEventListener('betatrader:alerts-changed', refresh);
+    return () => window.removeEventListener('betatrader:alerts-changed', refresh);
+  }, []);
   const [showForm, setShowForm] = useState(false);
   const [formAsset, setFormAsset] = useState('');
   const [formCondition, setFormCondition] = useState('above');
@@ -27,50 +30,8 @@ export default function AlertsScreen() {
     setFormError('');
   };
 
-  // Split alert symbols by category so we can fetch live prices for
-  // whichever assets currently have active alerts on them.
-  const alertSymbols = useMemo(() => alerts.map(a => a.asset), [alerts]);
-  const cryptoSymbols = useMemo(() => alertSymbols.filter(s => getCategory(s) === 'crypto'), [alertSymbols]);
-  const nonCryptoSymbols = useMemo(() => alertSymbols.filter(s => getCategory(s) !== 'crypto'), [alertSymbols]);
-
-  const { data: cryptoData } = useCryptoBatch(cryptoSymbols.length > 0);
-  const { data: nonCryptoData } = useBatchQuotes(nonCryptoSymbols, nonCryptoSymbols.length > 0);
-  const livePrices = useMemo(() => ({ ...(cryptoData || {}), ...(nonCryptoData || {}) }), [cryptoData, nonCryptoData]);
-
-  // Whenever live prices update, check active alerts against them.
-  useEffect(() => {
-    if (alerts.length === 0 || Object.keys(livePrices).length === 0) return;
-    try {
-      const result = checkAlerts(alerts, livePrices);
-      if (result.changed) {
-        setAlerts(result.alerts);
-        // Track newly triggered alerts for notification display
-        if (result.newlyTriggered.length > 0) {
-          // Request browser notification permission
-          if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-          }
-          // Show browser notification for each triggered alert
-          result.newlyTriggered.forEach(alert => {
-            if (!alert.id || !alert.asset) return; // Skip malformed alerts
-            if ('Notification' in window && Notification.permission === 'granted') {
-              try {
-                new Notification(`Alert: ${alert.asset}`, {
-                  body: `Price is now ${alert.condition} ${alert.value}`,
-                  icon: '/vite.svg',
-                  tag: `alert-${alert.id}`,
-                });
-              } catch (err) {
-                console.error('[Alerts] Notification error:', err);
-              }
-            }
-          });
-        }
-      }
-    } catch (err) {
-      console.error('[Alerts] Error checking alerts:', err);
-    }
-  }, [livePrices]);
+  /* Alert monitoring runs globally in AlertMonitor. */
+  const alertSymbols = [];
 
   const handleToggleForm = () => {
     setFormError('');
@@ -122,18 +83,11 @@ export default function AlertsScreen() {
   };
 
   return (
-    <div className="px-4 pt-4 pb-6 animate-fade-in">
+    <div className="px-4 pt-4 pb-32 animate-fade-in">
       {/* Sticky header — transparent, theme-aware */}
       <div className="sticky top-0 z-10 theme-bg-primary/85 backdrop-blur-xl -mx-4 px-4 pb-2">
-        <div className="flex items-center justify-between mb-4 pt-1">
+        <div className="flex items-center mb-4 pt-1">
           <h1 className="text-xl font-extrabold">Alerts</h1>
-          <button
-            onClick={handleToggleForm}
-            aria-label="Open Create Alert"
-            className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center text-slate-950"
-          >
-            {showForm ? <X size={18} /> : <Plus size={18} />}
-          </button>
         </div>
         <button onClick={openCreateForm} className="w-full btn-primary flex items-center justify-center gap-2">
           <Plus size={16} /> Create Alert
@@ -243,7 +197,7 @@ export default function AlertsScreen() {
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 pb-10">
         {alerts.map(alert => (
           <div key={alert.id} className={`glass-card p-4 ${
             alert.status === 'triggered' ? 'border-amber-500/30 bg-amber-500/5' : ''

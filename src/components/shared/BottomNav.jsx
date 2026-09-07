@@ -5,7 +5,7 @@ import { useNotifications } from '../../hooks/useNotifications.js';
 
 export default function BottomNav() {
   const { activeTab, setActiveTab, setSelectedAsset, clearNewsSelection } = useApp();
-  const { unreadAlertCount } = useNotifications();
+  const { unreadAlertCount, markAlertNotificationsAsRead } = useNotifications();
 
   const tabs = [
     { id: 'home', label: 'Home', icon: Home },
@@ -16,6 +16,7 @@ export default function BottomNav() {
   ];
 
   const handleTabClick = (tabId) => {
+    if (tabId === 'alerts') markAlertNotificationsAsRead();
     setActiveTab(tabId);
     if (tabId !== 'markets') setSelectedAsset(null);
     clearNewsSelection();

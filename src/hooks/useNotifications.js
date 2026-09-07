@@ -62,6 +62,26 @@ export function useNotifications() {
     }
   }, [notifications]);
 
+  const markAlertNotificationsAsRead = useCallback(async () => {
+    const targets = notifications.filter(notification => !notification.read && notification.type === 'alert_triggered');
+    if (!targets.length) return;
+    const timestamp = new Date().toISOString();
+    try {
+      if (supabase) {
+        const { data: auth } = await supabase.auth.getUser();
+        if (!auth?.user) throw new Error('You must be signed in.');
+        const { error: updateError } = await supabase.from('notifications').update({ read_at: timestamp })
+          .eq('user_id', auth.user.id).eq('type', 'alert_triggered').is('read_at', null);
+        if (updateError) throw updateError;
+      }
+      setNotifications(prev => prev.map(notification => notification.type === 'alert_triggered' ? { ...notification, read: true, read_at: notification.read_at || timestamp } : notification));
+      setUnreadAlertCount(0);
+      setUnreadCount(prev => Math.max(0, prev - targets.length));
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [notifications]);
+
   const markAllAsRead = useCallback(async () => {
     try {
       if (supabase) {
@@ -80,9 +100,11 @@ export function useNotifications() {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 120_000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchNotifications, 10_000);
+    const refresh = () => fetchNotifications();
+    window.addEventListener('betatrader:notifications-changed', refresh);
+    return () => { clearInterval(interval); window.removeEventListener('betatrader:notifications-changed', refresh); };
   }, [fetchNotifications]);
 
-  return { notifications, isLoading, error, unreadCount, unreadAlertCount, fetchNotifications, markAsRead, markAllAsRead };
+  return { notifications, isLoading, error, unreadCount, unreadAlertCount, fetchNotifications, markAsRead, markAlertNotificationsAsRead, markAllAsRead };
 }

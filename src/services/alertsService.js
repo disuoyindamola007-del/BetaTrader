@@ -2,7 +2,7 @@ import { scopedStorageKey } from './userStorageScope.js';
 import { supabase } from '../lib/supabaseClient.js';
 const STORAGE_KEY = 'betatrader:alerts:v1';
 function loadAlerts() { try { const raw = localStorage.getItem(scopedStorageKey(STORAGE_KEY)); const parsed = raw ? JSON.parse(raw) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
-function saveAlerts(alerts) { try { localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(alerts)); } catch { /* storage unavailable */ } }
+function saveAlerts(alerts) { try { localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(alerts)); window.dispatchEvent(new CustomEvent('betatrader:alerts-changed')); } catch { /* storage unavailable */ } }
 export function getAlerts() { return loadAlerts(); }
 function sync(promise) { promise.catch(error => console.error('[alertsService] Cloud sync failed:', error.message)); }
 export function createAlert({ asset, condition, value, provider, category }) { const newAlert = { id: Date.now(), asset: asset.toUpperCase().trim(), type: 'price', condition, value: parseFloat(value), provider: provider || null, category: category || null, status: 'active', createdAt: new Date().toISOString() }; const updated = [...loadAlerts(), newAlert]; saveAlerts(updated); if (supabase) sync(supabase.auth.getUser().then(({ data }) => data.user && supabase.from('alerts').upsert({ user_id: data.user.id, asset: newAlert.asset, condition, threshold: newAlert.value, type: 'price', provider: newAlert.provider, category: newAlert.category, status: 'active', client_id: String(newAlert.id) }, { onConflict: 'user_id,client_id' }))); return updated; }
@@ -41,6 +41,7 @@ export function checkAlerts(alerts, livePrices) {
         url: '/?tab=alerts',
       });
       if (notificationError && notificationError.code !== '23505') throw notificationError;
+      window.dispatchEvent(new CustomEvent('betatrader:notifications-changed'));
     }));
     return triggered;
   });

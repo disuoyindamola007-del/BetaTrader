@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Bell, X, ExternalLink, Check, CheckCheck, Clock, TrendingUp, AlertCircle, Info } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications.js';
 
@@ -7,6 +7,10 @@ export default function NotificationPanel({ isOpen, onClose }) {
   const [showAll, setShowAll] = useState(false);
 
   if (!isOpen) return null;
+
+  useEffect(() => {
+    if (isOpen && unreadCount > 0) markAllAsRead();
+  }, [isOpen, unreadCount, markAllAsRead]);
 
   const displayed = showAll ? notifications : notifications.slice(0, 5);
 

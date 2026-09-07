@@ -12,6 +12,7 @@ import MarketsScreen from './components/markets/MarketsScreen.jsx';
 import AssetDetail from './components/markets/AssetDetail.jsx';
 import JournalScreen from './components/journal/JournalScreen.jsx';
 import AlertsScreen from './components/alerts/AlertsScreen.jsx';
+import AlertMonitor from './components/alerts/AlertMonitor.jsx';
 import ProfileScreen from './components/profile/ProfileScreen.jsx';
 import AuthScreen from './components/auth/AuthScreen.jsx';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
@@ -132,6 +133,7 @@ function AppContent() {
   return (
     <div className="flex flex-col h-screen">
       <Toast />
+      <AlertMonitor />
       {migrationData && <div className="fixed inset-0 z-[3000] bg-black/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="migration-title">
         <div className="glass-card w-full max-w-md p-5">
           <h2 id="migration-title" className="text-lg font-bold theme-text-primary">Import data from this device?</h2>
